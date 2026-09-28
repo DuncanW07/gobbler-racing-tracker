@@ -15,7 +15,6 @@ const LAP_MS = 40_000;
 // Comet trail behind the car: longest/faintest first, shortest/brightest last.
 // Lengths are fractions of a lap.
 const TRAILS = [
-  { length: 0.15, width: 14, color: "#b3294f", opacity: 0.35 },
   { length: 0.065, width: 10, color: "#e5751f", opacity: 0.55 },
   { length: 0.02, width: 7, color: "#ff8a2b", opacity: 0.95 },
 ];
