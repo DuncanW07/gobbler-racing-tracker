@@ -138,7 +138,7 @@ export function Dashboard() {
           }}
         />
 
-        <main className="min-h-0 overflow-y-auto border-r border-white/10">
+        <main className="min-h-0 overflow-y-auto">
           {selected ? (
             <PartDetail part={selected} onBack={() => setSelectedId(null)} onRemove={removePart} />
           ) : (
@@ -147,7 +147,7 @@ export function Dashboard() {
         </main>
 
         {show3D && (
-          <aside className="relative min-h-0 bg-[radial-gradient(ellipse_at_center,rgba(134,31,65,0.18),transparent_70%)]">
+          <aside className="car-stage relative min-h-0">
             <div className="pointer-events-none absolute left-5 top-4 z-10 font-mono text-[10px] uppercase tracking-[0.25em] text-zinc-500">
               {placing
                 ? "Click the spot where the part is"

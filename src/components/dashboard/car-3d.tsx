@@ -334,10 +334,10 @@ export default function Car3D(props: Props) {
           args={[10, 10]}
           cellSize={0.25}
           cellThickness={0.6}
-          cellColor="#3f3f46"
+          cellColor="#4a1426"
           sectionSize={1}
           sectionThickness={1}
-          sectionColor="#861f41"
+          sectionColor="#b3294f"
           fadeDistance={9}
           fadeStrength={1.5}
           infiniteGrid
@@ -358,7 +358,7 @@ export default function Car3D(props: Props) {
       />
 
       <EffectComposer>
-        <Bloom mipmapBlur luminanceThreshold={0.9} intensity={1.1} />
+        <Bloom mipmapBlur luminanceThreshold={1} intensity={0.85} radius={0.4} />
       </EffectComposer>
     </Canvas>
   );

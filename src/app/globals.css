@@ -51,6 +51,27 @@ body {
 .animate-rise-in { animation: rise-in 0.7s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
 .animate-scan { animation: scan 3.5s linear infinite; }
 
+/* Dashboard car panel: maroon blueprint sheet that fades out into black,
+   with a soft maroon glow behind the car. No hard edge to the rest of the page. */
+.car-stage {
+  background:
+    radial-gradient(ellipse 60% 45% at 55% 48%, rgba(134, 31, 65, 0.42), transparent 70%),
+    #050505;
+}
+.car-stage::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image:
+    linear-gradient(rgba(179, 41, 79, 0.16) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(179, 41, 79, 0.16) 1px, transparent 1px),
+    linear-gradient(rgba(179, 41, 79, 0.32) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(179, 41, 79, 0.32) 1px, transparent 1px);
+  background-size: 24px 24px, 24px 24px, 120px 120px, 120px 120px;
+  mask-image: radial-gradient(ellipse 75% 65% at 55% 48%, black 25%, transparent 78%);
+}
+
 /* Title line reveal (anime.js splitText). Line wrappers must be blocks for the
    clip + slide to work; the padding/negative margin keeps descenders (the g in
    "Racing") from being clipped without changing the layout. */

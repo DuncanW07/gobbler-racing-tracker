@@ -22,27 +22,36 @@ export type Part = {
   used?: number;
 };
 
+// Neon highlight colors: they stand out against the dark and maroon car view.
+export const NEON = {
+  yellow: "#ffe14d",
+  blue: "#4d8dff",
+  green: "#3dff8a",
+  pink: "#ff4fd8",
+  cyan: "#22e5ff",
+} as const;
+
 const corners = (prefix: string, which: Corner[] = ["FL", "FR", "RL", "RR"]) =>
   which.map((c) => `${prefix}-${c}`);
 
 export const STARTING_PARTS: Part[] = [
   // Consumables
-  { id: "engine-oil", name: "Engine oil", group: "consumable", tracking: "hours", model: ["oil-pan", "engine-block"], color: "#f5a524" },
-  { id: "trans-oil", name: "Transmission oil", group: "consumable", tracking: "hours", model: ["transmission"], color: "#38bdf8" },
-  { id: "diff-oil", name: "Differential oil", group: "consumable", tracking: "hours", model: ["differential"], color: "#4ade80" },
-  { id: "pads-front", name: "Brake pads (front)", group: "consumable", tracking: "measured", model: corners("pad", ["FL", "FR"]), color: "#fb7185" },
-  { id: "pads-rear", name: "Brake pads (rear)", group: "consumable", tracking: "measured", model: corners("pad", ["RL", "RR"]), color: "#fb7185" },
+  { id: "engine-oil", name: "Engine oil", group: "consumable", tracking: "hours", model: ["oil-pan", "engine-block"], color: NEON.yellow },
+  { id: "trans-oil", name: "Transmission oil", group: "consumable", tracking: "hours", model: ["transmission"], color: NEON.blue },
+  { id: "diff-oil", name: "Differential oil", group: "consumable", tracking: "hours", model: ["differential"], color: NEON.green },
+  { id: "pads-front", name: "Brake pads (front)", group: "consumable", tracking: "measured", model: corners("pad", ["FL", "FR"]), color: NEON.pink },
+  { id: "pads-rear", name: "Brake pads (rear)", group: "consumable", tracking: "measured", model: corners("pad", ["RL", "RR"]), color: NEON.pink },
 
   // Wear parts
-  { id: "rotors", name: "Brake rotors", group: "wear", tracking: "measured", model: corners("rotor"), color: "#f97316" },
-  { id: "clutch", name: "Clutch", group: "wear", tracking: "hours", model: ["clutch"], color: "#e879f9" },
-  { id: "engine", name: "Engine", group: "wear", tracking: "hours", model: ["engine-block", "engine-head"], color: "#f97316" },
-  { id: "transmission", name: "Transmission", group: "wear", tracking: "hours", model: ["transmission"], color: "#38bdf8" },
-  { id: "differential", name: "Differential", group: "wear", tracking: "hours", model: ["differential"], color: "#4ade80" },
-  { id: "dampers", name: "Dampers", group: "wear", tracking: "hours", model: corners("damper"), color: "#a78bfa" },
-  { id: "bearings", name: "Wheel bearings", group: "wear", tracking: "hours", model: corners("hub"), color: "#facc15" },
-  { id: "control-arms", name: "Control arms / bushings", group: "wear", tracking: "condition", model: [...corners("arm-upper"), ...corners("arm-lower")], color: "#22d3ee" },
-  { id: "axles", name: "Axles / CV joints", group: "wear", tracking: "hours", model: ["axle-L", "axle-R"], color: "#fb923c" },
+  { id: "rotors", name: "Brake rotors", group: "wear", tracking: "measured", model: corners("rotor"), color: NEON.cyan },
+  { id: "clutch", name: "Clutch", group: "wear", tracking: "hours", model: ["clutch"], color: NEON.cyan },
+  { id: "engine", name: "Engine", group: "wear", tracking: "hours", model: ["engine-block", "engine-head"], color: NEON.yellow },
+  { id: "transmission", name: "Transmission", group: "wear", tracking: "hours", model: ["transmission"], color: NEON.blue },
+  { id: "differential", name: "Differential", group: "wear", tracking: "hours", model: ["differential"], color: NEON.green },
+  { id: "dampers", name: "Dampers", group: "wear", tracking: "hours", model: corners("damper"), color: NEON.pink },
+  { id: "bearings", name: "Wheel bearings", group: "wear", tracking: "hours", model: corners("hub"), color: NEON.yellow },
+  { id: "control-arms", name: "Control arms / bushings", group: "wear", tracking: "condition", model: [...corners("arm-upper"), ...corners("arm-lower")], color: NEON.cyan },
+  { id: "axles", name: "Axles / CV joints", group: "wear", tracking: "hours", model: ["axle-L", "axle-R"], color: NEON.green },
 ];
 
 export const GROUP_LABELS: Record<PartGroup, string> = {

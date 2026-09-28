@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { TRACKING_LABELS, type Corner, type Tracking } from "@/lib/parts";
+import { NEON, TRACKING_LABELS, type Corner, type Tracking } from "@/lib/parts";
 
 export type NewPart = {
   name: string;
@@ -11,7 +11,7 @@ export type NewPart = {
   marker?: [number, number, number];
 };
 
-const COLORS = ["#22d3ee", "#a78bfa", "#facc15", "#f472b6", "#4ade80", "#f97316"];
+const COLORS = [NEON.cyan, NEON.blue, NEON.yellow, NEON.green, NEON.pink];
 const CORNER_OPTIONS: { value: "" | Corner; label: string }[] = [
   { value: "", label: "Whole car" },
   { value: "FL", label: "Front left" },
