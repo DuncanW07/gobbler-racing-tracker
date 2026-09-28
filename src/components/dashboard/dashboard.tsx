@@ -19,19 +19,19 @@ const Car3D = dynamic(() => import("./car-3d"), {
   ),
 });
 
-const PREF_KEY = "gr-3d-view";
-
-// Laptop/desktop with a mouse, a wide screen and working 3D graphics gets the car.
-function detect3D(): boolean {
+// Laptop/PC gets the 3D car; phone/iPad doesn't. The deciding check is the
+// main input: mouse/trackpad (laptop, PC, touchscreen laptops too) vs touch
+// (phones, iPads). Screen width and 3D support are safety checks.
+function isComputer(): boolean {
+  const mainInputIsMouse = window.matchMedia("(pointer: fine) and (hover: hover)").matches;
   const wide = window.innerWidth >= 1024;
-  const mouse = window.matchMedia("(pointer: fine)").matches;
   let webgl = false;
   try {
     webgl = !!document.createElement("canvas").getContext("webgl2");
   } catch {
     webgl = false;
   }
-  return wide && mouse && webgl;
+  return mainInputIsMouse && wide && webgl;
 }
 
 export function Dashboard() {
@@ -42,27 +42,11 @@ export function Dashboard() {
   const [placing, setPlacing] = useState(false);
   const [draft, setDraft] = useState<NewPart | null>(null);
 
-  // Decide 3D on/off: this device's saved choice, otherwise auto-detect.
+  // Decided once on load (browser-only info, so it can't run on the server).
   useEffect(() => {
-    let saved: string | null = null;
-    try {
-      saved = localStorage.getItem(PREF_KEY);
-    } catch {
-      saved = null;
-    }
     // eslint-disable-next-line react-hooks/set-state-in-effect -- reads browser-only info once on mount
-    setShow3D(saved === "on" ? true : saved === "off" ? false : detect3D());
+    setShow3D(isComputer());
   }, []);
-
-  const toggle3D = () => {
-    const next = !show3D;
-    setShow3D(next);
-    try {
-      localStorage.setItem(PREF_KEY, next ? "on" : "off");
-    } catch {
-      // Private browsing etc.: the toggle still works for this visit.
-    }
-  };
 
   const selected = parts.find((p) => p.id === selectedId) ?? null;
 
@@ -131,19 +115,6 @@ export function Dashboard() {
           >
             + Log session
           </button>
-          {show3D !== null && (
-            <button
-              type="button"
-              onClick={toggle3D}
-              aria-pressed={show3D}
-              className="flex items-center gap-2 rounded-lg border border-white/10 px-3 py-2 font-mono text-[11px] uppercase tracking-[0.2em] text-zinc-400 transition hover:border-orange/50 hover:text-orange"
-            >
-              <span className={`relative h-3.5 w-6 rounded-full transition ${show3D ? "bg-orange" : "bg-zinc-700"}`}>
-                <span className={`absolute top-0.5 h-2.5 w-2.5 rounded-full bg-white transition-all ${show3D ? "left-3" : "left-0.5"}`} />
-              </span>
-              3D
-            </button>
-          )}
           <form action={logout}>
             <button
               type="submit"
