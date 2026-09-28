@@ -1,14 +1,16 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { logout } from "@/app/actions/auth";
-import { STARTING_PARTS, type Part } from "@/lib/parts";
+import { addPart, getHistory, refreshState, removePart } from "@/app/actions/tracker";
+import { formatDate, formatNumber, type HistoryEntry, type TrackerState } from "@/lib/parts";
 import type { CarHighlight } from "./car-3d";
 import { PartList } from "./part-list";
 import { Overview } from "./overview";
-import { PartDetail } from "./part-detail";
+import { PartDetail, type PartAction } from "./part-detail";
 import { AddPartDialog, type NewPart } from "./add-part-dialog";
+import { EntryDialog, LimitDialog, LogSessionDialog } from "./dialogs";
 
 const Car3D = dynamic(() => import("./car-3d"), {
   ssr: false,
@@ -18,6 +20,8 @@ const Car3D = dynamic(() => import("./car-3d"), {
     </div>
   ),
 });
+
+const REFRESH_MS = 60_000;
 
 // Laptop/PC gets the 3D car; phone/iPad doesn't. The deciding check is the
 // main input: mouse/trackpad (laptop, PC, touchscreen laptops too) vs touch
@@ -34,13 +38,21 @@ function isComputer(): boolean {
   return mainInputIsMouse && wide && webgl;
 }
 
-export function Dashboard() {
-  const [parts, setParts] = useState<Part[]>(STARTING_PARTS);
+type History = HistoryEntry[] | "loading" | { error: string };
+
+export function Dashboard({ initialState }: { initialState: TrackerState }) {
+  const [state, setState] = useState<TrackerState>(initialState);
+  const { parts, sessions } = state;
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [history, setHistory] = useState<History>("loading");
   const [show3D, setShow3D] = useState<boolean | null>(null);
+  const [dialog, setDialog] = useState<null | "session" | PartAction>(null);
   const [adding, setAdding] = useState(false);
   const [placing, setPlacing] = useState(false);
   const [draft, setDraft] = useState<NewPart | null>(null);
+  const [addError, setAddError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [saving, startSaving] = useTransition();
 
   // Decided once on load (browser-only info, so it can't run on the server).
   useEffect(() => {
@@ -50,10 +62,55 @@ export function Dashboard() {
 
   const selected = parts.find((p) => p.id === selectedId) ?? null;
 
+  const loadHistory = useCallback(async (id: string) => {
+    const res = await getHistory(id);
+    setHistory(res.ok ? res.history : { error: res.error });
+  }, []);
+
+  const select = (id: string | null) => {
+    setSelectedId(id);
+    if (id) {
+      setHistory("loading");
+      void loadHistory(id);
+    }
+  };
+
+  // Keep everyone's screens current: refresh every minute and when the tab
+  // comes back into focus.
+  const selectedRef = useRef(selectedId);
+  useEffect(() => {
+    selectedRef.current = selectedId;
+  }, [selectedId]);
+  useEffect(() => {
+    const refresh = async () => {
+      if (document.visibilityState !== "visible") return;
+      const res = await refreshState();
+      if (res.ok) setState(res.state);
+      if (selectedRef.current) void loadHistory(selectedRef.current);
+    };
+    const timer = window.setInterval(refresh, REFRESH_MS);
+    document.addEventListener("visibilitychange", refresh);
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", refresh);
+    };
+  }, [loadHistory]);
+
+  const flash = (msg: string) => {
+    setNotice(msg);
+    window.setTimeout(() => setNotice(null), 3500);
+  };
+
+  const onSaved = (next: TrackerState, msg: string) => {
+    setState(next);
+    setDialog(null);
+    flash(msg);
+    if (selectedRef.current) void loadHistory(selectedRef.current);
+  };
+
   const highlight: CarHighlight | null = useMemo(() => {
-    if (placing) return null;
-    if (!selected) return null;
-    return { keys: selected.model, color: selected.color, marker: selected.marker };
+    if (placing || !selected) return null;
+    return { keys: selected.model, color: selected.color, marker: selected.marker ?? undefined };
   }, [selected, placing]);
 
   const markers = parts
@@ -63,34 +120,46 @@ export function Dashboard() {
 
   const pickFromCar = (key: string) => {
     const match = parts.find((p) => p.model.includes(key));
-    if (match) setSelectedId(match.id);
+    if (match) select(match.id);
   };
 
   const finishAdd = (part: NewPart) => {
-    const id = `custom-${Date.now()}`;
-    setParts((prev) => [
-      ...prev,
-      {
-        id,
+    setAddError(null);
+    startSaving(async () => {
+      const res = await addPart({
         name: part.name,
-        group: "custom",
         tracking: part.tracking,
-        corner: part.corner,
-        model: [],
+        corner: part.corner ?? null,
         color: part.color,
-        marker: part.marker,
-      },
-    ]);
-    setDraft(null);
-    setAdding(false);
-    setPlacing(false);
-    setSelectedId(id);
+        marker: part.marker ?? null,
+      });
+      if (!res.ok) {
+        setAddError(res.error);
+        return;
+      }
+      setState(res.state);
+      setDraft(null);
+      setAdding(false);
+      setPlacing(false);
+      flash(`Added ${part.name}`);
+      if (res.id) select(res.id);
+    });
   };
 
-  const removePart = (id: string) => {
-    setParts((prev) => prev.filter((p) => p.id !== id));
-    setSelectedId(null);
+  const onRemove = (id: string) => {
+    startSaving(async () => {
+      const res = await removePart(id);
+      if (!res.ok) {
+        flash(res.error);
+        return;
+      }
+      setState(res.state);
+      setSelectedId(null);
+      flash("Part removed");
+    });
   };
+
+  const lastSession = sessions[0];
 
   return (
     <div className="flex h-dvh flex-col overflow-hidden bg-background text-zinc-100">
@@ -103,15 +172,16 @@ export function Dashboard() {
           </span>
         </div>
         <div className="hidden items-center gap-2 font-mono text-[11px] uppercase tracking-[0.2em] text-zinc-500 md:flex">
-          <span className="h-1.5 w-1.5 rounded-full bg-zinc-600" />
-          Next event: not scheduled
+          <span className={`h-1.5 w-1.5 rounded-full ${lastSession ? "bg-emerald-400" : "bg-zinc-600"}`} />
+          {lastSession
+            ? `Last session: ${lastSession.name} · ${formatDate(lastSession.date)} · ${formatNumber(lastSession.hours)} hrs`
+            : "No sessions logged yet"}
         </div>
         <div className="ml-auto flex items-center gap-3">
           <button
             type="button"
-            disabled
-            title="Coming next: log a session and hours update automatically"
-            className="rounded-lg bg-linear-to-r from-orange to-maroon-bright px-4 py-2 text-xs font-bold uppercase tracking-[0.15em] text-white opacity-60"
+            onClick={() => setDialog("session")}
+            className="rounded-lg bg-linear-to-r from-orange to-maroon-bright px-4 py-2 text-xs font-bold uppercase tracking-[0.15em] text-white shadow-lg shadow-maroon/30 transition hover:brightness-110"
           >
             + Log session
           </button>
@@ -131,29 +201,33 @@ export function Dashboard() {
         <PartList
           parts={parts}
           selectedId={selectedId}
-          onSelect={setSelectedId}
+          onSelect={select}
           onAdd={() => {
-            setSelectedId(null);
+            select(null);
+            setAddError(null);
             setAdding(true);
           }}
         />
 
         <main className="min-h-0 overflow-y-auto">
           {selected ? (
-            <PartDetail part={selected} onBack={() => setSelectedId(null)} onRemove={removePart} />
+            <PartDetail
+              part={selected}
+              history={history}
+              onBack={() => select(null)}
+              onAction={setDialog}
+              onRemove={onRemove}
+              removing={saving}
+            />
           ) : (
-            <Overview parts={parts} onSelect={setSelectedId} />
+            <Overview parts={parts} sessions={sessions} onSelect={select} />
           )}
         </main>
 
         {show3D && (
           <aside className="car-stage relative min-h-0">
-            <div className="pointer-events-none absolute left-5 top-4 z-10 font-mono text-[10px] uppercase tracking-[0.25em] text-zinc-500">
-              {placing
-                ? "Click the spot where the part is"
-                : selected
-                  ? `Showing: ${selected.name}`
-                  : "Drag to rotate · click a part"}
+            <div className="pointer-events-none absolute left-5 top-4 z-10 font-mono text-[10px] uppercase tracking-[0.25em] text-zinc-400">
+              {placing ? "Click the spot where the part is" : selected ? `Showing: ${selected.name}` : "Drag to rotate · click a part"}
             </div>
             <Car3D
               highlight={highlight}
@@ -169,11 +243,28 @@ export function Dashboard() {
         )}
       </div>
 
+      {/* Dialogs */}
+      {dialog === "session" && (
+        <LogSessionDialog onClose={() => setDialog(null)} onSaved={(s) => onSaved(s, "Session logged")} />
+      )}
+      {selected && (dialog === "checked" || dialog === "changed" || dialog === "issue") && (
+        <EntryDialog
+          part={selected}
+          action={dialog}
+          onClose={() => setDialog(null)}
+          onSaved={(s) => onSaved(s, dialog === "checked" ? "Check saved" : dialog === "changed" ? "Change saved" : "Issue saved")}
+        />
+      )}
+      {selected && dialog === "limit" && (
+        <LimitDialog part={selected} onClose={() => setDialog(null)} onSaved={(s) => onSaved(s, "Limit saved")} />
+      )}
       {adding && (
         <AddPartDialog
           draft={draft}
           can3D={!!show3D}
           placing={placing}
+          saving={saving}
+          error={addError}
           onDraftChange={setDraft}
           onStartPlacing={() => setPlacing(true)}
           onCancel={() => {
@@ -183,6 +274,12 @@ export function Dashboard() {
           }}
           onSave={finishAdd}
         />
+      )}
+
+      {notice && (
+        <div role="status" className="fixed bottom-6 left-1/2 z-50 -translate-x-1/2 rounded-full border border-white/10 bg-zinc-900/95 px-5 py-2.5 text-sm text-zinc-100 shadow-2xl">
+          {notice}
+        </div>
       )}
     </div>
   );

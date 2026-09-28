@@ -32,10 +32,14 @@ export function AddPartDialog({
   onStartPlacing,
   onCancel,
   onSave,
+  saving = false,
+  error = null,
 }: {
   draft: NewPart | null;
   can3D: boolean;
   placing: boolean;
+  saving?: boolean;
+  error?: string | null;
   onDraftChange: (d: NewPart) => void;
   onStartPlacing: () => void;
   onCancel: () => void;
@@ -89,7 +93,7 @@ export function AddPartDialog({
         <p className="font-mono text-[10px] uppercase tracking-[0.25em] text-orange">New part</p>
         <h2 id="add-part-title" className="mt-1 text-xl font-black">Add a part to track</h2>
         <p className="mt-1 text-sm text-zinc-500">
-          Preview only: added parts disappear on reload until the database is connected.
+          For anything not already on the list, like a part that broke or needs watching.
         </p>
 
         <div className="mt-5 space-y-4">
@@ -173,16 +177,22 @@ export function AddPartDialog({
           </div>
         </div>
 
+        {error && (
+          <p role="alert" className="mt-4 rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm text-red-200">
+            {error}
+          </p>
+        )}
+
         <div className="mt-6 flex justify-end gap-3">
           <button type="button" onClick={onCancel} className="rounded-lg px-4 py-2 text-sm text-zinc-400 hover:text-white">
             Cancel
           </button>
           <button
             type="submit"
-            disabled={!canSave}
+            disabled={!canSave || saving}
             className="rounded-lg bg-linear-to-r from-orange to-maroon-bright px-5 py-2 text-sm font-bold uppercase tracking-[0.15em] text-white disabled:opacity-40"
           >
-            Add part
+            {saving ? "Saving…" : "Add part"}
           </button>
         </div>
       </form>

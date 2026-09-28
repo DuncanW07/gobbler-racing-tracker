@@ -55,7 +55,9 @@ body {
    with a soft maroon glow behind the car. No hard edge to the rest of the page. */
 .car-stage {
   background:
+    radial-gradient(ellipse 85% 45% at 55% 12%, rgba(134, 31, 65, 0.34), transparent 75%),
     radial-gradient(ellipse 60% 45% at 55% 48%, rgba(134, 31, 65, 0.42), transparent 70%),
+    linear-gradient(180deg, rgba(134, 31, 65, 0.14), transparent 45%),
     #050505;
 }
 .car-stage::before {
@@ -69,7 +71,7 @@ body {
     linear-gradient(rgba(179, 41, 79, 0.32) 1px, transparent 1px),
     linear-gradient(90deg, rgba(179, 41, 79, 0.32) 1px, transparent 1px);
   background-size: 24px 24px, 24px 24px, 120px 120px, 120px 120px;
-  mask-image: radial-gradient(ellipse 75% 65% at 55% 48%, black 25%, transparent 78%);
+  mask-image: radial-gradient(ellipse 85% 80% at 55% 38%, black 30%, transparent 82%);
 }
 
 /* Title line reveal (anime.js splitText). Line wrappers must be blocks for the

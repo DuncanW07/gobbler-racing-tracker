@@ -1,41 +1,81 @@
 "use client";
 
-import { GROUP_LABELS, STATUS_STYLES, TRACKING_LABELS, partStatus, type Part } from "@/lib/parts";
+import {
+  ACTION_LABELS,
+  GROUP_LABELS,
+  STATUS_STYLES,
+  TRACKING_LABELS,
+  UNITS,
+  formatDate,
+  formatNumber,
+  lifeUsed,
+  partStatus,
+  type EntryAction,
+  type HistoryEntry,
+  type Part,
+} from "@/lib/parts";
 
-const UNITS: Record<Part["tracking"], string> = {
-  hours: "hrs",
-  weekends: "weekends",
-  measured: "mm",
-  condition: "",
+export type PartAction = EntryAction | "limit";
+
+const ACTION_TONES: Record<HistoryEntry["action"], string> = {
+  checked: "border-sky-400/40 text-sky-300",
+  changed: "border-emerald-400/40 text-emerald-300",
+  issue: "border-red-400/40 text-red-300",
+  topped_off: "border-amber-400/40 text-amber-300",
 };
 
 export function PartDetail({
   part,
+  history,
   onBack,
+  onAction,
   onRemove,
+  removing,
 }: {
   part: Part;
+  history: HistoryEntry[] | "loading" | { error: string };
   onBack: () => void;
+  onAction: (a: PartAction) => void;
   onRemove: (id: string) => void;
+  removing: boolean;
 }) {
   const status = STATUS_STYLES[partStatus(part)];
   const unit = UNITS[part.tracking];
-  const soon = "Coming when the database is connected";
+  const used = lifeUsed(part);
+  const measured = part.tracking === "measured";
+  const counted = part.tracking === "hours" || part.tracking === "weekends";
 
   const stat = (label: string, value: string) => (
     <div className="rounded-xl border border-white/10 bg-white/[0.03] p-4">
       <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-zinc-500">{label}</p>
-      <p className="mt-1.5 text-xl font-bold text-zinc-300">{value}</p>
+      <p className="mt-1.5 text-xl font-bold text-zinc-200">{value}</p>
     </div>
   );
 
+  let lifeText: string;
+  let lifeHint: string;
+  if (counted) {
+    lifeText = `${formatNumber(part.used)} / ${formatNumber(part.limit)} ${unit}`;
+    lifeHint = part.limit == null
+      ? "No change interval set yet. Use Set limit once the team gives you one."
+      : `${formatNumber(Math.max(part.limit - (part.used ?? 0), 0))} ${unit} left before a change is due.`;
+  } else if (measured) {
+    lifeText = `${formatNumber(part.current)} ${unit} now`;
+    lifeHint = part.limit == null
+      ? "No minimum set yet. Use Set limit to enter the new and minimum thickness."
+      : part.current == null
+        ? "No measurement logged yet. Use Log check after measuring."
+        : `Minimum ${formatNumber(part.limit)} ${unit}${part.newValue != null ? `, ${formatNumber(part.newValue)} ${unit} when new` : ""}.`;
+  } else {
+    lifeText = part.lastEntry ? `Last looked at ${formatDate(part.lastEntry)}` : "Not checked yet";
+    lifeHint = "Tracked by inspections. Log a check each time it's looked at, or report an issue.";
+  }
+
+  const barColor = partStatus(part) === "due" ? "#ef4444" : partStatus(part) === "soon" ? "#fbbf24" : part.color;
+
   return (
     <div className="p-8">
-      <button
-        type="button"
-        onClick={onBack}
-        className="font-mono text-[11px] uppercase tracking-[0.2em] text-zinc-500 transition hover:text-orange"
-      >
+      <button type="button" onClick={onBack} className="font-mono text-[11px] uppercase tracking-[0.2em] text-zinc-500 transition hover:text-orange">
         ← Overview
       </button>
 
@@ -48,7 +88,7 @@ export function PartDetail({
           <h1 className="mt-1 text-3xl font-black tracking-tight">{part.name}</h1>
           <p className="mt-1 text-sm text-zinc-500">Tracked by {TRACKING_LABELS[part.tracking].toLowerCase()}</p>
         </div>
-        <span className="flex items-center gap-2 rounded-full border border-white/10 px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.2em] text-zinc-400">
+        <span className="flex items-center gap-2 rounded-full border border-white/10 px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.2em] text-zinc-300">
           <span className={`h-2 w-2 rounded-full ${status.dot}`} />
           {status.label}
         </span>
@@ -56,36 +96,48 @@ export function PartDetail({
 
       {/* Life */}
       <section className="mt-6 rounded-xl border border-white/10 bg-white/[0.03] p-5">
-        <div className="flex items-baseline justify-between">
+        <div className="flex items-baseline justify-between gap-4">
           <h2 className="text-sm font-bold uppercase tracking-[0.15em] text-zinc-300">Life</h2>
-          <span className="font-mono text-xs text-zinc-500">
-            — / — {unit}
-          </span>
+          <span className="font-mono text-sm text-zinc-300">{lifeText}</span>
         </div>
-        <div className="mt-3 h-2.5 overflow-hidden rounded-full bg-white/5">
-          <div className="h-full w-0 rounded-full" style={{ background: part.color }} />
-        </div>
-        <p className="mt-3 text-sm text-zinc-500">
-          No limit set yet. Once the team gives you a change interval, it goes here and the
-          bar fills as {part.tracking === "measured" ? "measurements are logged" : "sessions are logged"}.
-        </p>
+        {part.tracking !== "condition" && (
+          <div className="mt-3 h-2.5 overflow-hidden rounded-full bg-white/5">
+            <div
+              className="h-full rounded-full transition-all"
+              style={{ width: `${Math.min(Math.max(used ?? 0, 0), 1) * 100}%`, background: barColor }}
+            />
+          </div>
+        )}
+        <p className="mt-3 text-sm text-zinc-500">{lifeHint}</p>
       </section>
 
       <div className="mt-4 grid grid-cols-3 gap-3">
-        {stat("Limit", "—")}
-        {stat("Since last change", "—")}
-        {stat("Last changed", "—")}
+        {stat(
+          measured ? "Minimum" : counted ? "Change every" : "Entries",
+          measured || counted
+            ? part.limit != null ? `${formatNumber(part.limit)} ${unit}` : "—"
+            : Array.isArray(history) ? String(history.length) : "—",
+        )}
+        {stat(
+          measured ? "Last measured" : counted ? "Since last change" : "Last entry",
+          measured ? `${formatNumber(part.current)} ${part.current != null ? unit : ""}` : counted ? `${formatNumber(part.used)} ${unit}` : formatDate(part.lastEntry),
+        )}
+        {stat("Last changed", formatDate(part.lastChanged))}
       </div>
 
       {/* Actions */}
       <div className="mt-6 flex flex-wrap gap-3">
-        {["Log check", "Log change", "Report issue", "Set limit"].map((label) => (
+        {([
+          ["checked", "Log check"],
+          ["changed", "Log change"],
+          ["issue", "Report issue"],
+          ...(part.tracking === "condition" ? [] : [["limit", part.limit != null ? "Edit limit" : "Set limit"]]),
+        ] as [PartAction, string][]).map(([action, label]) => (
           <button
-            key={label}
+            key={action}
             type="button"
-            disabled
-            title={soon}
-            className="rounded-lg border border-white/10 px-4 py-2 text-sm text-zinc-400 opacity-60"
+            onClick={() => onAction(action)}
+            className="rounded-lg border border-white/15 px-4 py-2 text-sm text-zinc-200 transition hover:border-orange/60 hover:text-orange"
           >
             {label}
           </button>
@@ -95,23 +147,48 @@ export function PartDetail({
       {/* History */}
       <section className="mt-8">
         <h2 className="text-sm font-bold uppercase tracking-[0.15em] text-zinc-300">History</h2>
-        <p className="mt-3 rounded-xl border border-dashed border-white/10 px-5 py-6 text-sm text-zinc-500">
-          No history yet. Checks, changes and issues for this part will list here with date,
-          event, who logged it and cost.
-        </p>
+        {history === "loading" ? (
+          <p className="mt-3 text-sm text-zinc-500">Loading…</p>
+        ) : !Array.isArray(history) ? (
+          <p className="mt-3 text-sm text-red-300">{history.error}</p>
+        ) : history.length === 0 ? (
+          <p className="mt-3 rounded-xl border border-dashed border-white/10 px-5 py-6 text-sm text-zinc-500">
+            No history yet. Checks, changes and issues for this part will list here.
+          </p>
+        ) : (
+          <ul className="mt-3 divide-y divide-white/5 rounded-xl border border-white/10 bg-white/[0.02]">
+            {history.map((h) => (
+              <li key={h.id} className="flex gap-4 px-5 py-4">
+                <span className={`h-fit shrink-0 rounded-full border px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.15em] ${ACTION_TONES[h.action]}`}>
+                  {ACTION_LABELS[h.action]}
+                </span>
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 text-sm">
+                    <span className="text-zinc-200">{formatDate(h.at)}</span>
+                    {h.measurement != null && <span className="font-mono text-zinc-300">{formatNumber(h.measurement)} {unit}</span>}
+                    {h.cost != null && <span className="font-mono text-zinc-400">${h.cost.toFixed(2)}</span>}
+                    {h.loggedBy && <span className="text-zinc-500">by {h.loggedBy}</span>}
+                  </div>
+                  {h.notes && <p className="mt-1 whitespace-pre-wrap break-words text-sm text-zinc-400">{h.notes}</p>}
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
       </section>
 
       {part.group === "custom" && (
         <section className="mt-8 flex items-center justify-between rounded-xl border border-white/10 bg-white/[0.03] p-4">
           <p className="text-sm text-zinc-400">
-            {part.marker ? "Location marked on the car." : "No location marked on the car."}
+            {part.marker ? "Location marked on the car." : "No location marked on the car."} Removing hides it; its history is kept.
           </p>
           <button
             type="button"
+            disabled={removing}
             onClick={() => onRemove(part.id)}
-            className="rounded-lg border border-red-500/30 px-3 py-1.5 text-sm text-red-300 transition hover:bg-red-500/10"
+            className="shrink-0 rounded-lg border border-red-500/30 px-3 py-1.5 text-sm text-red-300 transition hover:bg-red-500/10 disabled:opacity-50"
           >
-            Remove part
+            {removing ? "Removing…" : "Remove part"}
           </button>
         </section>
       )}
