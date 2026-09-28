@@ -16,28 +16,32 @@ const WHEEL_R = 0.31;
 const FRONT_Z = WHEELBASE / 2;
 const REAR_Z = -WHEELBASE / 2;
 
-type CornerKey = "FL" | "FR" | "RL" | "RR";
-const CORNERS: { key: CornerKey; x: number; z: number }[] = [
-  { key: "FL", x: TRACK / 2, z: FRONT_Z },
-  { key: "FR", x: -TRACK / 2, z: FRONT_Z },
-  { key: "RL", x: TRACK / 2, z: REAR_Z },
-  { key: "RR", x: -TRACK / 2, z: REAR_Z },
-];
+type V3 = [number, number, number];
+const CORNERS = (["FL", "FR", "RL", "RR"] as const).map((key) => ({
+  key,
+  x: key[1] === "L" ? TRACK / 2 : -TRACK / 2,
+  z: key[0] === "F" ? FRONT_Z : REAR_Z,
+}));
 
 export type CarHighlight = {
   keys: string[];
   color: string;
-  marker?: [number, number, number];
+  marker?: V3;
 };
+
+/** One line of the hover label: part name + its status dot class. */
+export type HoverLine = { name: string; dot?: string };
 
 type Props = {
   highlight: CarHighlight | null;
+  /** Tracked parts that use this piece of the car (for the hover label). */
+  describe: (key: string) => HoverLine[];
   /** Shows glowing markers for custom parts placed on the car. */
-  markers: { position: [number, number, number]; color: string; active: boolean }[];
+  markers: { position: V3; color: string; active: boolean }[];
   onPickPart: (key: string) => void;
   /** When set, the next click on the car places a point instead of selecting. */
   placing: boolean;
-  onPlace: (point: [number, number, number]) => void;
+  onPlace: (point: V3) => void;
 };
 
 // ---------------------------------------------------------------- body shape
@@ -82,59 +86,69 @@ function bodyGeometry() {
 
 // ---------------------------------------------------------------- materials
 
-const BASE = new THREE.Color("#3f3f46");
+const HOVER = "#ff8a2b";
 
-function usePartMaterial(key: string, highlight: CarHighlight | null) {
-  const lit = highlight?.keys.includes(key) ?? false;
-  const xray = highlight !== null;
-  return useMemo(() => {
-    const m = new THREE.MeshStandardMaterial({
-      color: lit ? new THREE.Color(highlight!.color) : BASE,
-      emissive: lit ? new THREE.Color(highlight!.color) : new THREE.Color("#000000"),
-      emissiveIntensity: lit ? 2.2 : 0,
+// Pieces share materials: one per (glow color, faded) combo, made once.
+const materials = new Map<string, THREE.MeshStandardMaterial>();
+function partMaterial(glow: string | null, faded: boolean) {
+  const id = `${glow}|${faded}`;
+  let m = materials.get(id);
+  if (!m) {
+    m = new THREE.MeshStandardMaterial({
+      color: glow ?? "#3f3f46",
+      emissive: glow ?? "#000000",
+      emissiveIntensity: glow ? 2.2 : 0,
       metalness: 0.2,
       roughness: 0.55,
-      transparent: xray && !lit,
-      opacity: xray && !lit ? 0.18 : 1,
-      depthWrite: !(xray && !lit),
+      transparent: faded,
+      opacity: faded ? 0.18 : 1,
+      depthWrite: !faded,
     });
-    return m;
-  }, [lit, xray, highlight]);
+    materials.set(id, m);
+  }
+  return m;
 }
+
+// Body shell: normal and x-ray (while a part is selected).
+const SHELL = [0.3, 0.04].map(
+  (opacity) =>
+    new THREE.MeshStandardMaterial({
+      color: "#18181b", metalness: 0.1, roughness: 0.7, transparent: true, opacity, depthWrite: false, side: THREE.DoubleSide,
+    }),
+);
+
+// Names for pieces that aren't a tracked part.
+const PLAIN: Record<string, string> = { tire: "Tire", rollbar: "Roll bar", driveshaft: "Driveshaft" };
 
 // ---------------------------------------------------------------- pieces
 
 type PieceProps = {
   pieceKey: string;
   highlight: CarHighlight | null;
+  hoverKey: string | null;
   onPick: (key: string, e: ThreeEvent<MouseEvent>) => void;
-  onHover: (hovering: boolean) => void;
-  position?: [number, number, number];
-  rotation?: [number, number, number];
+  setHover: React.Dispatch<React.SetStateAction<string | null>>;
+  position?: V3;
+  rotation?: V3;
   children: React.ReactNode; // geometry
 };
 
-function Piece({ pieceKey, highlight, onPick, onHover, position, rotation, children }: PieceProps) {
-  const material = usePartMaterial(pieceKey, highlight);
-  const lit = highlight?.keys.includes(pieceKey) ?? false;
-  const xray = highlight !== null;
+function Piece({ pieceKey, highlight, hoverKey, onPick, setHover, position, rotation, children }: PieceProps) {
+  // Selected part glows in its color; the piece under the cursor glows orange.
+  const glow = highlight?.keys.includes(pieceKey) ? highlight.color : hoverKey === pieceKey ? HOVER : null;
+  const faded = !!highlight && !glow;
   return (
     <mesh
       position={position}
       rotation={rotation}
-      material={material}
+      material={partMaterial(glow, faded)}
       userData={{ piece: pieceKey }}
       onClick={(e) => onPick(pieceKey, e)}
-      onPointerOver={(e) => { e.stopPropagation(); onHover(true); }}
-      onPointerOut={() => onHover(false)}
+      onPointerOver={(e) => { e.stopPropagation(); setHover(pieceKey); }}
+      onPointerOut={() => setHover((k) => (k === pieceKey ? null : k))}
     >
       {children}
-      <Edges
-        threshold={20}
-        color={lit ? highlight!.color : "#a1a1aa"}
-        transparent
-        opacity={lit ? 1 : xray ? 0.12 : 0.45}
-      />
+      <Edges threshold={20} color={glow ?? "#a1a1aa"} transparent opacity={glow ? 1 : faded ? 0.12 : 0.45} />
     </mesh>
   );
 }
@@ -143,20 +157,24 @@ function Piece({ pieceKey, highlight, onPick, onHover, position, rotation, child
 function Segment({
   from, to, radius, ...rest
 }: Omit<PieceProps, "position" | "rotation" | "children"> & {
-  from: [number, number, number];
-  to: [number, number, number];
+  from: V3;
+  to: V3;
   radius: number;
 }) {
-  const { position, quaternion, length } = useMemo(() => {
+  const { position, rotation, length } = useMemo(() => {
     const a = new THREE.Vector3(...from);
-    const b = new THREE.Vector3(...to);
-    const dir = b.clone().sub(a);
-    const q = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir.clone().normalize());
-    return { position: a.add(b).multiplyScalar(0.5), quaternion: q, length: dir.length() };
+    const dir = new THREE.Vector3(...to).sub(a);
+    const e = new THREE.Euler().setFromQuaternion(
+      new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir.clone().normalize()),
+    );
+    return {
+      position: a.addScaledVector(dir, 0.5).toArray() as V3,
+      rotation: [e.x, e.y, e.z] as V3,
+      length: dir.length(),
+    };
   }, [from, to]);
-  const euler = new THREE.Euler().setFromQuaternion(quaternion);
   return (
-    <Piece {...rest} position={position.toArray() as [number, number, number]} rotation={[euler.x, euler.y, euler.z]}>
+    <Piece {...rest} position={position} rotation={rotation}>
       <cylinderGeometry args={[radius, radius, length, 10]} />
     </Piece>
   );
@@ -164,37 +182,25 @@ function Segment({
 
 // ---------------------------------------------------------------- car
 
-function Car({ highlight, markers, onPickPart, placing, onPlace }: Props) {
+type CarProps = Props & { hoverKey: string | null; setHover: PieceProps["setHover"] };
+
+function Car({ highlight, markers, onPickPart, placing, onPlace, hoverKey, setHover }: CarProps) {
   const body = useMemo(() => bodyGeometry(), []);
   const rootRef = useRef<THREE.Group>(null);
-  const [hovering, setHovering] = useState(false);
   const xray = highlight !== null;
 
   useEffect(() => {
-    document.body.style.cursor = placing ? "crosshair" : hovering ? "pointer" : "";
+    document.body.style.cursor = placing ? "crosshair" : hoverKey ? "pointer" : "";
     return () => {
       document.body.style.cursor = "";
     };
-  }, [hovering, placing]);
+  }, [hoverKey, placing]);
 
   // Store placed points in the car's own coordinates so markers stay on the car.
   const placeAt = (world: THREE.Vector3) => {
     const local = rootRef.current ? rootRef.current.worldToLocal(world.clone()) : world;
     onPlace([+local.x.toFixed(3), +local.y.toFixed(3), +local.z.toFixed(3)]);
   };
-
-  const bodyMaterial = useMemo(
-    () => new THREE.MeshStandardMaterial({
-      color: "#18181b",
-      metalness: 0.1,
-      roughness: 0.7,
-      transparent: true,
-      opacity: xray ? 0.04 : 0.3,
-      depthWrite: false,
-      side: THREE.DoubleSide,
-    }),
-    [xray],
-  );
 
   const pick = (key: string, e: ThreeEvent<MouseEvent>) => {
     e.stopPropagation();
@@ -206,7 +212,7 @@ function Car({ highlight, markers, onPickPart, placing, onPlace }: Props) {
     onPickPart(key);
   };
 
-  const common = { highlight, onPick: pick, onHover: setHovering };
+  const common = { highlight, hoverKey, setHover, onPick: pick };
 
   return (
     <group ref={rootRef}>
@@ -215,7 +221,7 @@ function Car({ highlight, markers, onPickPart, placing, onPlace }: Props) {
           first part behind the shell, or on the shell if nothing is behind it. */}
       <mesh
         geometry={body}
-        material={bodyMaterial}
+        material={SHELL[xray ? 1 : 0]}
         onClick={(e) => {
           if (!placing || e.delta > 4) return;
           e.stopPropagation();
@@ -294,7 +300,7 @@ function Car({ highlight, markers, onPickPart, placing, onPlace }: Props) {
   );
 }
 
-function PulseRing({ position, color }: { position: [number, number, number]; color: string }) {
+function PulseRing({ position, color }: { position: V3; color: string }) {
   const ref = useRef<THREE.Mesh>(null);
   useFrame(({ clock, camera }) => {
     if (!ref.current) return;
@@ -314,71 +320,100 @@ function PulseRing({ position, color }: { position: [number, number, number]; co
 // ---------------------------------------------------------------- scene
 
 // Slow spin (15% slower than the first version), and after you drag the car
-// it holds still for 4 seconds before spinning again.
+// it holds still for 3.3 seconds before spinning again.
 const SPIN_SPEED = 0.7 * 0.85;
 const RESUME_AFTER_DRAG_MS = 3300;
 
 export default function Car3D(props: Props) {
   const [heldByUser, setHeldByUser] = useState(false);
+  const [hoverKey, setHover] = useState<string | null>(null);
   const resumeTimer = useRef<number | undefined>(undefined);
+  const tip = useRef<HTMLDivElement>(null);
   useEffect(() => () => window.clearTimeout(resumeTimer.current), []);
 
+  const lines = hoverKey ? props.describe(hoverKey) : [];
+  if (hoverKey && !lines.length) lines.push({ name: PLAIN[hoverKey.split("-")[0]] ?? hoverKey });
+
+  // Label follows the cursor (moved directly, no re-render), flipping left near the edge.
+  const moveTip = (e: React.PointerEvent<HTMLDivElement>) => {
+    const el = tip.current;
+    if (!el) return;
+    const { offsetX: x, offsetY: y } = e.nativeEvent;
+    const left = x + 16 + el.offsetWidth > e.currentTarget.clientWidth ? x - 12 - el.offsetWidth : x + 16;
+    el.style.transform = `translate(${left}px, ${y + 16}px)`;
+  };
+
   return (
-    <Canvas
-      camera={{ position: [6.5, 3.4, 6.5], fov: 35 }}
-      dpr={[1, 2]}
-      gl={{ antialias: true, alpha: true }}
-    >
-      <ambientLight intensity={0.8} />
-      <directionalLight position={[4, 6, 3]} intensity={1.2} />
-      <directionalLight position={[-4, 3, -4]} intensity={0.35} color="#e5751f" />
+    <div className="relative h-full w-full" onPointerMove={moveTip} onPointerLeave={() => setHover(null)}>
+      <Canvas
+        camera={{ position: [6.5, 3.4, 6.5], fov: 35 }}
+        dpr={[1, 2]}
+        gl={{ antialias: true, alpha: true }}
+      >
+        <ambientLight intensity={0.8} />
+        <directionalLight position={[4, 6, 3]} intensity={1.2} />
+        <directionalLight position={[-4, 3, -4]} intensity={0.35} color="#e5751f" />
 
-      <group position={[0, -0.55, 0]}>
-        {/* Fits the camera to the car whatever shape the panel is. */}
-        <Bounds fit clip observe margin={1.12}>
-          <Car {...props} />
-        </Bounds>
-        <Grid
-          position={[0, 0.001, 0]}
-          args={[10, 10]}
-          cellSize={0.25}
-          cellThickness={0.6}
-          cellColor="#4a1426"
-          sectionSize={1}
-          sectionThickness={1}
-          sectionColor="#b3294f"
-          fadeDistance={9}
-          fadeStrength={1.5}
-          infiniteGrid
+        <group position={[0, -0.55, 0]}>
+          {/* Fits the camera to the car whatever shape the panel is. */}
+          <Bounds fit clip observe margin={1.12}>
+            <Car {...props} hoverKey={hoverKey} setHover={setHover} />
+          </Bounds>
+          <Grid
+            position={[0, 0.001, 0]}
+            args={[10, 10]}
+            cellSize={0.25}
+            cellThickness={0.6}
+            cellColor="#4a1426"
+            sectionSize={1}
+            sectionThickness={1}
+            sectionColor="#b3294f"
+            fadeDistance={9}
+            fadeStrength={1.5}
+            infiniteGrid
+          />
+        </group>
+
+        <OrbitControls
+          makeDefault
+          enablePan={false}
+          enableZoom
+          minDistance={3}
+          maxDistance={16}
+          minPolarAngle={0.35}
+          maxPolarAngle={Math.PI / 2.1}
+          // Settles quickly after you let go instead of coasting.
+          dampingFactor={0.18}
+          autoRotate={!props.placing && !heldByUser}
+          autoRotateSpeed={SPIN_SPEED}
+          onStart={() => {
+            window.clearTimeout(resumeTimer.current);
+            setHeldByUser(true);
+          }}
+          onEnd={() => {
+            window.clearTimeout(resumeTimer.current);
+            resumeTimer.current = window.setTimeout(() => setHeldByUser(false), RESUME_AFTER_DRAG_MS);
+          }}
+          target={[0, -0.05, 0]}
         />
-      </group>
 
-      <OrbitControls
-        makeDefault
-        enablePan={false}
-        enableZoom
-        minDistance={3}
-        maxDistance={16}
-        minPolarAngle={0.35}
-        maxPolarAngle={Math.PI / 2.1}
-        // Settles quickly after you let go instead of coasting.
-        dampingFactor={0.18}
-        autoRotate={!props.placing && !heldByUser}
-        autoRotateSpeed={SPIN_SPEED}
-        onStart={() => {
-          window.clearTimeout(resumeTimer.current);
-          setHeldByUser(true);
-        }}
-        onEnd={() => {
-          window.clearTimeout(resumeTimer.current);
-          resumeTimer.current = window.setTimeout(() => setHeldByUser(false), RESUME_AFTER_DRAG_MS);
-        }}
-        target={[0, -0.05, 0]}
-      />
-
-      <EffectComposer>
-        <Bloom mipmapBlur luminanceThreshold={1} intensity={0.85} radius={0.4} />
-      </EffectComposer>
-    </Canvas>
+        <EffectComposer>
+          <Bloom mipmapBlur luminanceThreshold={1} intensity={0.85} radius={0.4} />
+        </EffectComposer>
+      </Canvas>
+      <div
+        ref={tip}
+        role="tooltip"
+        hidden={!lines.length}
+        className="pointer-events-none absolute left-0 top-0 z-20 space-y-1 rounded-md border border-white/15 bg-zinc-950/90 px-2.5 py-1.5 text-xs font-semibold text-zinc-100 shadow-lg"
+      >
+        {lines.map((l) => (
+          <p key={l.name} className="flex items-center gap-2 whitespace-nowrap">
+            {l.name}
+            {l.dot && <span className={`h-2 w-2 rounded-full ${l.dot}`} />}
+          </p>
+        ))}
+      </div>
+    </div>
   );
 }

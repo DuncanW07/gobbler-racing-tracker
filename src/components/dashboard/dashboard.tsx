@@ -5,8 +5,8 @@ import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from
 import { logout } from "@/app/actions/auth";
 import { addPart, deleteEntry, deleteSession, getHistory, refreshState, removePart } from "@/app/actions/tracker";
 import { canShow3D } from "@/lib/device";
-import { formatDate, formatNumber, type HistoryEntry, type TrackerState } from "@/lib/parts";
-import type { CarHighlight } from "./car-3d";
+import { STATUS_STYLES, formatDate, formatNumber, partStatus, type HistoryEntry, type TrackerState } from "@/lib/parts";
+import type { CarHighlight, HoverLine } from "./car-3d";
 import { MobilePartPicker, PartList } from "./part-list";
 import { Overview } from "./overview";
 import { PartDetail, type PartAction } from "./part-detail";
@@ -172,6 +172,12 @@ export function Dashboard({ initialState }: { initialState: TrackerState }) {
     .filter((p) => p.marker)
     .map((p) => ({ position: p.marker!, color: p.color, active: p.id === selectedId }));
   if (draft?.marker) markers.push({ position: draft.marker, color: draft.color, active: true });
+
+  const describePiece = useCallback(
+    (key: string): HoverLine[] =>
+      parts.filter((p) => p.model.includes(key)).map((p) => ({ name: p.name, dot: STATUS_STYLES[partStatus(p)].dot })),
+    [parts],
+  );
 
   const pickFromCar = (key: string) => {
     const match = parts.find((p) => p.model.includes(key));
@@ -365,6 +371,7 @@ export function Dashboard({ initialState }: { initialState: TrackerState }) {
               </div>
               <Car3D
                 highlight={highlight}
+                describe={describePiece}
                 markers={markers}
                 onPickPart={pickFromCar}
                 placing={placing}
