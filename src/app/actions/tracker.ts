@@ -60,6 +60,7 @@ function friendly(message: string): string {
   if (message.includes("not_authenticated")) return "Your login expired. Refresh the page and log in again.";
   if (message.includes("cannot_remove")) return "Only parts your team added can be removed.";
   if (message.includes("part_not_found")) return "That part no longer exists. Refresh the page.";
+  if (message.includes("name_required")) return "Add your name in Logged by.";
   return "Couldn't save. Check your connection and try again.";
 }
 
@@ -135,17 +136,19 @@ export async function logEntry(input: {
   loggedBy?: string;
   notes?: string;
 }): Promise<TrackerResult> {
-  return run(async (token) =>
-    createServerClient().rpc("tracker_log_entry", {
+  return run(async (token) => {
+    const loggedBy = text(input.loggedBy, 60);
+    if (!loggedBy) throw new InputError("Add your name in Logged by.");
+    return createServerClient().rpc("tracker_log_entry", {
       p_token: token,
       p_component: uuid(input.partId),
       p_action: pick(input.action, ACTIONS),
       p_measurement: num(input.measurement, 0, 99999, "Measurement"),
       p_cost: num(input.cost, 0, 999999, "Cost"),
-      p_logged_by: text(input.loggedBy, 60),
+      p_logged_by: loggedBy,
       p_notes: text(input.notes, 1000),
-    }),
-  );
+    });
+  });
 }
 
 export async function setLimit(input: {

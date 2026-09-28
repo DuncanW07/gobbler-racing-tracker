@@ -260,7 +260,7 @@ export function EntryDialog({
           </div>
           <div>
             <label htmlFor="e-by" className={labelClass}>Logged by</label>
-            <input id="e-by" maxLength={60} value={loggedBy} onChange={(e) => setLoggedBy(e.target.value)} placeholder="Your name" className={fieldClass} />
+            <input id="e-by" required maxLength={60} value={loggedBy} onChange={(e) => setLoggedBy(e.target.value)} placeholder="Your name" className={fieldClass} />
           </div>
         </div>
         <Footer pending={pending} error={error} label={copy.button} onCancel={onClose} />
