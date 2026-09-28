@@ -131,6 +131,16 @@ export const STATUS_STYLES: Record<PartStatus, { dot: string; label: string }> =
   due: { dot: "bg-red-500", label: "Change now" },
 };
 
+// Status wording for one part. "Not set up" says what's missing.
+export function statusLabel(part: Part): string {
+  const s = partStatus(part);
+  if (s !== "unset") return STATUS_STYLES[s].label;
+  if (part.tracking === "condition") return "Not checked yet";
+  if (part.limit == null) return "Needs a limit";
+  if (part.tracking === "measured") return "Needs a measurement";
+  return STATUS_STYLES.unset.label;
+}
+
 export function formatNumber(n: number | null | undefined, digits = 1): string {
   if (n == null) return "—";
   return Number.isInteger(n) ? String(n) : n.toFixed(digits);

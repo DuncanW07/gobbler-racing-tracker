@@ -1,12 +1,13 @@
 // Decorative background shared by the login and dashboard pages.
+// Glows are plain gradients (no blur filter). They only drift on computers.
 export function Backdrop() {
   return (
     <div aria-hidden className="pointer-events-none absolute inset-0 overflow-hidden">
       <div className="grid-backdrop absolute inset-0 opacity-70" />
 
-      <div className="animate-glow-drift absolute -left-40 -top-40 h-[34rem] w-[34rem] rounded-full bg-maroon/40 blur-[130px]" />
+      <div className="glow-maroon animate-glow-drift absolute -left-72 -top-72 h-[52rem] w-[52rem] rounded-full" />
       <div
-        className="animate-glow-drift absolute -bottom-52 -right-40 h-[32rem] w-[32rem] rounded-full bg-orange/20 blur-[130px]"
+        className="glow-orange animate-glow-drift absolute -bottom-80 -right-72 h-[50rem] w-[50rem] rounded-full"
         style={{ animationDelay: "-7s" }}
       />
 

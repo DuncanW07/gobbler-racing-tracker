@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 import { Backdrop } from "@/components/backdrop";
 import { HeroHeader } from "@/components/hero-header";
 import { IntroStage } from "@/components/intro-stage";
-import { RaceTrack } from "@/components/track/race-track";
+import { TrackBackground } from "@/components/track/track-background";
 import { getTeamStatus, hasValidSession } from "@/lib/auth";
 import { LoginForm, SetupForm } from "./auth-forms";
 
@@ -13,7 +13,7 @@ export default async function LoginPage() {
   return (
     <main className="relative flex flex-1 flex-col overflow-hidden bg-background">
       <Backdrop />
-      <RaceTrack />
+      <TrackBackground />
 
       <IntroStage className="relative z-10 mx-auto flex w-full max-w-2xl flex-1 flex-col justify-center px-5 py-16 [perspective:1400px]">
         <HeroHeader />
@@ -22,7 +22,7 @@ export default async function LoginPage() {
           data-flip
           className="mx-auto mt-10 w-full max-w-md origin-top rounded-2xl bg-linear-to-br from-orange/60 via-white/10 to-maroon-bright/60 p-px shadow-2xl shadow-black/60"
         >
-          <div className="relative overflow-hidden rounded-2xl bg-zinc-950/75 p-6 backdrop-blur-md sm:p-8">
+          <div className="card-surface relative overflow-hidden rounded-2xl p-6 sm:p-8">
             <div aria-hidden className="pointer-events-none absolute inset-x-0 top-0 h-px overflow-hidden">
               <div className="animate-scan h-px w-1/2 bg-linear-to-r from-transparent via-orange to-transparent" />
             </div>

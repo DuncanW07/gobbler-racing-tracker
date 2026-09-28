@@ -21,7 +21,13 @@ body {
   color: var(--foreground);
 }
 
-/* Technical grid background, faded toward the edges */
+/*
+  PERFORMANCE RULE: phones and tablets get only static styling. Anything that
+  animates, blurs, or redraws every frame lives inside the "computer" media
+  query below (same definition as COMPUTER_QUERY in src/lib/device.ts).
+*/
+
+/* Technical grid background, faded toward the edges (static, cheap) */
 .grid-backdrop {
   background-image:
     linear-gradient(rgba(229, 117, 31, 0.07) 1px, transparent 1px),
@@ -32,9 +38,22 @@ body {
   mask-image: radial-gradient(ellipse at center, black 30%, transparent 75%);
 }
 
+/* Soft background glows: plain gradients (no blur filter), so they're cheap */
+.glow-maroon {
+  background: radial-gradient(circle, rgba(134, 31, 65, 0.55), rgba(134, 31, 65, 0.18) 40%, transparent 70%);
+}
+.glow-orange {
+  background: radial-gradient(circle, rgba(229, 117, 31, 0.28), rgba(229, 117, 31, 0.08) 40%, transparent 70%);
+}
+
+/* Login card surface: solid on phones, frosted glass on computers */
+.card-surface {
+  background: rgba(9, 9, 11, 0.94);
+}
+
 @keyframes glow-drift {
-  0%, 100% { transform: translate(0, 0) scale(1); opacity: 0.55; }
-  50% { transform: translate(3%, -2%) scale(1.08); opacity: 0.8; }
+  0%, 100% { transform: translate(0, 0) scale(1); opacity: 0.7; }
+  50% { transform: translate(3%, -2%) scale(1.08); opacity: 1; }
 }
 
 @keyframes rise-in {
@@ -47,9 +66,7 @@ body {
   to { transform: translateX(100%); }
 }
 
-.animate-glow-drift { animation: glow-drift 14s ease-in-out infinite; }
 .animate-rise-in { animation: rise-in 0.7s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
-.animate-scan { animation: scan 3.5s linear infinite; }
 
 /* Dashboard car panel: maroon blueprint sheet that fades out into black,
    with a soft maroon glow behind the car. No hard edge to the rest of the page. */
@@ -86,35 +103,55 @@ body {
   display: block;
 }
 
-/* Keeps the title readable where the track runs underneath it. */
-.hero-title {
-  filter: drop-shadow(0 2px 14px rgba(0, 0, 0, 0.9));
-}
-
-/* Hide intro pieces until the animation code has set their start positions,
-   so the finished page doesn't flash first. If the script never runs, the
-   fallback animation shows everything after 2.5s. */
-.intro-stage[data-intro="pending"],
-.race-track[data-ready="false"] {
-  opacity: 0;
-  animation: intro-fallback 0s linear 2.5s forwards;
-}
-.race-track[data-ready="false"] [data-car-layer] {
-  display: none;
-}
 @keyframes intro-fallback {
   to { opacity: 1; }
+}
+
+/* ---------------------------------------------------------------- computers only */
+@media (pointer: fine) and (hover: hover) and (min-width: 1024px) {
+  .animate-glow-drift { animation: glow-drift 14s ease-in-out infinite; will-change: transform; }
+  .animate-scan { animation: scan 3.5s linear infinite; }
+
+  .card-surface {
+    background: rgba(9, 9, 11, 0.75);
+    -webkit-backdrop-filter: blur(12px);
+    backdrop-filter: blur(12px);
+  }
+
+  /* Keeps the title readable where the track runs underneath it. */
+  .hero-title {
+    filter: drop-shadow(0 2px 14px rgba(0, 0, 0, 0.9));
+  }
+
+  /* Track layers each get their own layer, so the moving car doesn't force the
+     blurred glow to be redrawn every frame (cut drawing work ~95% in testing). */
+  .race-track svg {
+    will-change: transform;
+    transform: translateZ(0);
+  }
+
+  /* Hide intro pieces until the animation code has set their start positions,
+     so the finished page doesn't flash first. If the script never runs, the
+     fallback animation shows everything after 2.5s. */
+  .intro-stage[data-intro="pending"],
+  .race-track[data-ready="false"] {
+    opacity: 0;
+    animation: intro-fallback 0s linear 2.5s forwards;
+  }
+  .race-track[data-ready="false"] [data-car-layer] {
+    display: none;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .animate-glow-drift,
   .animate-rise-in,
   .animate-scan {
-    animation: none;
+    animation: none !important;
   }
   .intro-stage[data-intro="pending"],
   .race-track[data-ready="false"] {
-    opacity: 1;
-    animation: none;
+    opacity: 1 !important;
+    animation: none !important;
   }
 }

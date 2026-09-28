@@ -4,14 +4,16 @@ import dynamic from "next/dynamic";
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { logout } from "@/app/actions/auth";
 import { addPart, getHistory, refreshState, removePart } from "@/app/actions/tracker";
+import { canShow3D } from "@/lib/device";
 import { formatDate, formatNumber, type HistoryEntry, type TrackerState } from "@/lib/parts";
 import type { CarHighlight } from "./car-3d";
-import { PartList } from "./part-list";
+import { MobilePartPicker, PartList } from "./part-list";
 import { Overview } from "./overview";
 import { PartDetail, type PartAction } from "./part-detail";
 import { AddPartDialog, type NewPart } from "./add-part-dialog";
 import { EntryDialog, LimitDialog, LogSessionDialog } from "./dialogs";
 
+// Only downloaded on computers (phones/tablets never load the 3D code).
 const Car3D = dynamic(() => import("./car-3d"), {
   ssr: false,
   loading: () => (
@@ -23,20 +25,11 @@ const Car3D = dynamic(() => import("./car-3d"), {
 
 const REFRESH_MS = 60_000;
 
-// Laptop/PC gets the 3D car; phone/iPad doesn't. The deciding check is the
-// main input: mouse/trackpad (laptop, PC, touchscreen laptops too) vs touch
-// (phones, iPads). Screen width and 3D support are safety checks.
-function isComputer(): boolean {
-  const mainInputIsMouse = window.matchMedia("(pointer: fine) and (hover: hover)").matches;
-  const wide = window.innerWidth >= 1024;
-  let webgl = false;
-  try {
-    webgl = !!document.createElement("canvas").getContext("webgl2");
-  } catch {
-    webgl = false;
-  }
-  return mainInputIsMouse && wide && webgl;
-}
+// Divider between the info and the car: the car's share of that area.
+const SPLIT_KEY = "gr-car-split";
+const SPLIT_DEFAULT = 0.41;
+const SPLIT_MAX = 0.55; // car at most 55%, info at least 45%
+const SPLIT_SNAP = 0.08; // drag closer than this to the edge and the car closes
 
 type History = HistoryEntry[] | "loading" | { error: string };
 
@@ -46,6 +39,10 @@ export function Dashboard({ initialState }: { initialState: TrackerState }) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [history, setHistory] = useState<History>("loading");
   const [show3D, setShow3D] = useState<boolean | null>(null);
+  const [split, setSplit] = useState(SPLIT_DEFAULT);
+  const [dragging, setDragging] = useState(false);
+  const splitRef = useRef<HTMLDivElement>(null);
+  const splitValue = useRef(SPLIT_DEFAULT);
   const [dialog, setDialog] = useState<null | "session" | PartAction>(null);
   const [adding, setAdding] = useState(false);
   const [placing, setPlacing] = useState(false);
@@ -56,9 +53,65 @@ export function Dashboard({ initialState }: { initialState: TrackerState }) {
 
   // Decided once on load (browser-only info, so it can't run on the server).
   useEffect(() => {
+    let saved = SPLIT_DEFAULT;
+    try {
+      const raw = localStorage.getItem(SPLIT_KEY);
+      if (raw != null && Number.isFinite(Number(raw))) saved = Math.min(Math.max(Number(raw), 0), SPLIT_MAX);
+    } catch {
+      // storage unavailable: use the default
+    }
+    splitValue.current = saved;
     // eslint-disable-next-line react-hooks/set-state-in-effect -- reads browser-only info once on mount
-    setShow3D(isComputer());
+    setSplit(saved);
+    setShow3D(canShow3D());
   }, []);
+
+  const applySplit = (value: number, save: boolean) => {
+    const v = value < SPLIT_SNAP ? 0 : Math.min(value, SPLIT_MAX);
+    splitValue.current = v;
+    setSplit(v);
+    if (save) {
+      try {
+        localStorage.setItem(SPLIT_KEY, String(v));
+      } catch {
+        // ignore
+      }
+    }
+  };
+
+  const startDrag = (e: React.PointerEvent) => {
+    const box = splitRef.current?.getBoundingClientRect();
+    if (!box) return;
+    e.preventDefault();
+    const startX = e.clientX;
+    const wasClosed = splitValue.current === 0;
+    let moved = false;
+    setDragging(true);
+    const move = (ev: PointerEvent) => {
+      if (Math.abs(ev.clientX - startX) > 3) moved = true;
+      if (moved) applySplit((box.right - ev.clientX) / box.width, false);
+    };
+    const up = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      setDragging(false);
+      // A plain click on the closed divider reopens the car.
+      if (!moved && wasClosed) applySplit(SPLIT_DEFAULT, true);
+      else applySplit(splitValue.current, true);
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+  };
+
+  const onDividerKey = (e: React.KeyboardEvent) => {
+    const step = 0.03;
+    if (e.key === "ArrowLeft") applySplit(Math.max(splitValue.current, SPLIT_SNAP) + step, true);
+    else if (e.key === "ArrowRight") applySplit(splitValue.current - step, true);
+    else if (e.key === "Home") applySplit(SPLIT_MAX, true);
+    else if (e.key === "End") applySplit(0, true);
+    else return;
+    e.preventDefault();
+  };
 
   const selected = parts.find((p) => p.id === selectedId) ?? null;
 
@@ -160,28 +213,34 @@ export function Dashboard({ initialState }: { initialState: TrackerState }) {
   };
 
   const lastSession = sessions[0];
+  const carOpen = !!show3D && split > 0;
+  const onAdd = () => {
+    select(null);
+    setAddError(null);
+    setAdding(true);
+  };
 
   return (
-    <div className="flex h-dvh flex-col overflow-hidden bg-background text-zinc-100">
+    <div className={`flex h-dvh flex-col overflow-hidden bg-background text-zinc-100 ${dragging ? "cursor-col-resize select-none" : ""}`}>
       {/* Header */}
-      <header className="flex h-14 shrink-0 items-center gap-6 border-b border-white/10 bg-black/60 px-5 backdrop-blur">
-        <div className="flex items-baseline gap-3">
-          <span className="text-sm font-black tracking-tight text-white">GOBBLER RACING</span>
+      <header className="flex h-14 shrink-0 items-center gap-3 border-b border-white/10 bg-black px-4 sm:gap-6 sm:px-5">
+        <div className="flex min-w-0 items-baseline gap-3">
+          <span className="truncate text-sm font-black tracking-tight text-white">GOBBLER RACING</span>
           <span className="hidden font-mono text-[10px] uppercase tracking-[0.25em] text-orange sm:inline">
             Consumables Tracker
           </span>
         </div>
-        <div className="hidden items-center gap-2 font-mono text-[11px] uppercase tracking-[0.2em] text-zinc-500 md:flex">
+        <div className="hidden items-center gap-2 font-mono text-[11px] uppercase tracking-[0.2em] text-zinc-500 xl:flex">
           <span className={`h-1.5 w-1.5 rounded-full ${lastSession ? "bg-emerald-400" : "bg-zinc-600"}`} />
           {lastSession
             ? `Last session: ${lastSession.name} · ${formatDate(lastSession.date)} · ${formatNumber(lastSession.hours)} hrs`
             : "No sessions logged yet"}
         </div>
-        <div className="ml-auto flex items-center gap-3">
+        <div className="ml-auto flex shrink-0 items-center gap-2 sm:gap-3">
           <button
             type="button"
             onClick={() => setDialog("session")}
-            className="rounded-lg bg-linear-to-r from-orange to-maroon-bright px-4 py-2 text-xs font-bold uppercase tracking-[0.15em] text-white shadow-lg shadow-maroon/30 transition hover:brightness-110"
+            className="rounded-lg bg-linear-to-r from-orange to-maroon-bright px-3 py-2 text-xs font-bold uppercase tracking-[0.12em] text-white shadow-lg shadow-maroon/30 transition hover:brightness-110 sm:px-4"
           >
             + Log session
           </button>
@@ -197,50 +256,79 @@ export function Dashboard({ initialState }: { initialState: TrackerState }) {
       </header>
 
       {/* Body */}
-      <div className={`grid min-h-0 flex-1 ${show3D ? "grid-cols-[250px_1fr_35%]" : "grid-cols-[250px_1fr]"}`}>
+      <div className="flex min-h-0 flex-1">
         <PartList
+          className="hidden w-[250px] shrink-0 lg:flex"
           parts={parts}
           selectedId={selectedId}
           onSelect={select}
-          onAdd={() => {
-            select(null);
-            setAddError(null);
-            setAdding(true);
-          }}
+          onAdd={onAdd}
         />
 
-        <main className="min-h-0 overflow-y-auto">
-          {selected ? (
-            <PartDetail
-              part={selected}
-              history={history}
-              onBack={() => select(null)}
-              onAction={setDialog}
-              onRemove={onRemove}
-              removing={saving}
-            />
-          ) : (
-            <Overview parts={parts} sessions={sessions} onSelect={select} />
-          )}
-        </main>
+        <div ref={splitRef} className="relative flex min-h-0 min-w-0 flex-1">
+          <main
+            className="min-h-0 min-w-0 overflow-y-auto"
+            style={{ width: carOpen ? `${(1 - split) * 100}%` : "100%" }}
+          >
+            <MobilePartPicker parts={parts} selectedId={selectedId} onSelect={select} onAdd={onAdd} />
+            {selected ? (
+              <PartDetail
+                part={selected}
+                history={history}
+                onBack={() => select(null)}
+                onAction={setDialog}
+                onRemove={onRemove}
+                removing={saving}
+              />
+            ) : (
+              <Overview parts={parts} sessions={sessions} onSelect={select} />
+            )}
+          </main>
 
-        {show3D && (
-          <aside className="car-stage relative min-h-0">
-            <div className="pointer-events-none absolute left-5 top-4 z-10 font-mono text-[10px] uppercase tracking-[0.25em] text-zinc-400">
-              {placing ? "Click the spot where the part is" : selected ? `Showing: ${selected.name}` : "Drag to rotate · click a part"}
+          {show3D && (
+            <div
+              role="separator"
+              aria-orientation="vertical"
+              aria-label="Resize the car view"
+              aria-valuemin={0}
+              aria-valuemax={Math.round(SPLIT_MAX * 100)}
+              aria-valuenow={Math.round(split * 100)}
+              tabIndex={0}
+              title={carOpen ? "Drag to resize the car view" : "Click or drag to show the car"}
+              onPointerDown={startDrag}
+              onKeyDown={onDividerKey}
+              className="group absolute inset-y-0 z-30 flex w-4 -translate-x-1/2 cursor-col-resize items-center justify-center outline-none"
+              style={{ left: carOpen ? `${(1 - split) * 100}%` : "calc(100% - 8px)" }}
+            >
+              <span className={`h-full w-px transition ${dragging ? "bg-orange" : "bg-white/10 group-hover:bg-orange/60 group-focus-visible:bg-orange"}`} />
+              <span
+                className={`absolute flex h-12 items-center justify-center rounded-full border transition ${
+                  carOpen ? "w-2.5" : "w-6 -translate-x-1"
+                } ${dragging ? "border-orange bg-orange/30" : "border-white/20 bg-zinc-900 group-hover:border-orange/70 group-focus-visible:border-orange"}`}
+              >
+                {!carOpen && <span className="font-mono text-[10px] text-zinc-300">‹</span>}
+              </span>
             </div>
-            <Car3D
-              highlight={highlight}
-              markers={markers}
-              onPickPart={pickFromCar}
-              placing={placing}
-              onPlace={(point) => {
-                setDraft((d) => (d ? { ...d, marker: point } : d));
-                setPlacing(false);
-              }}
-            />
-          </aside>
-        )}
+          )}
+
+          {carOpen && (
+            <aside className="car-stage relative min-h-0 min-w-0" style={{ width: `${split * 100}%` }}>
+              <div className="pointer-events-none absolute left-5 top-4 z-10 font-mono text-[10px] uppercase tracking-[0.25em] text-zinc-400">
+                {placing ? "Click the spot where the part is" : selected ? `Showing: ${selected.name}` : "Drag to rotate · click a part"}
+              </div>
+              <Car3D
+                highlight={highlight}
+                markers={markers}
+                onPickPart={pickFromCar}
+                placing={placing}
+                onPlace={(point) => {
+                  setDraft((d) => (d ? { ...d, marker: point } : d));
+                  setPlacing(false);
+                }}
+              />
+            </aside>
+          )}
+        </div>
       </div>
 
       {/* Dialogs */}
@@ -261,7 +349,7 @@ export function Dashboard({ initialState }: { initialState: TrackerState }) {
       {adding && (
         <AddPartDialog
           draft={draft}
-          can3D={!!show3D}
+          can3D={carOpen}
           placing={placing}
           saving={saving}
           error={addError}

@@ -10,6 +10,7 @@ import {
   formatNumber,
   lifeUsed,
   partStatus,
+  statusLabel,
   type EntryAction,
   type HistoryEntry,
   type Part,
@@ -74,7 +75,7 @@ export function PartDetail({
   const barColor = partStatus(part) === "due" ? "#ef4444" : partStatus(part) === "soon" ? "#fbbf24" : part.color;
 
   return (
-    <div className="p-8">
+    <div className="p-4 sm:p-8">
       <button type="button" onClick={onBack} className="font-mono text-[11px] uppercase tracking-[0.2em] text-zinc-500 transition hover:text-orange">
         ← Overview
       </button>
@@ -88,9 +89,9 @@ export function PartDetail({
           <h1 className="mt-1 text-3xl font-black tracking-tight">{part.name}</h1>
           <p className="mt-1 text-sm text-zinc-500">Tracked by {TRACKING_LABELS[part.tracking].toLowerCase()}</p>
         </div>
-        <span className="flex items-center gap-2 rounded-full border border-white/10 px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.2em] text-zinc-300">
+        <span className="flex shrink-0 items-center gap-2 rounded-full border border-white/10 px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.2em] text-zinc-300">
           <span className={`h-2 w-2 rounded-full ${status.dot}`} />
-          {status.label}
+          {statusLabel(part)}
         </span>
       </div>
 
@@ -111,7 +112,7 @@ export function PartDetail({
         <p className="mt-3 text-sm text-zinc-500">{lifeHint}</p>
       </section>
 
-      <div className="mt-4 grid grid-cols-3 gap-3">
+      <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
         {stat(
           measured ? "Minimum" : counted ? "Change every" : "Entries",
           measured || counted

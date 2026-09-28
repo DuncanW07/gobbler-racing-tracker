@@ -172,7 +172,7 @@ export function AddPartDialog({
                 </button>
               </div>
             ) : (
-              <p className="mt-2 text-sm text-zinc-500">Turn on 3D to mark where it is on the car.</p>
+              <p className="mt-2 text-sm text-zinc-500">Marking the spot on the car works on a computer with the car view open.</p>
             )}
           </div>
         </div>

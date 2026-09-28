@@ -2,6 +2,7 @@
 
 import {
   STATUS_STYLES,
+  statusLabel,
   TRACKING_LABELS,
   UNITS,
   formatDate,
@@ -45,11 +46,11 @@ export function Overview({
   ];
 
   return (
-    <div className="p-8">
+    <div className="p-4 sm:p-8">
       <p className="font-mono text-[11px] uppercase tracking-[0.25em] text-orange">Overview</p>
       <h1 className="mt-1 text-3xl font-black tracking-tight">Car status</h1>
 
-      <div className="mt-6 grid grid-cols-4 gap-3">
+      <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
         {tiles.map(({ status, tone }) => (
           <div key={status} className="rounded-xl border border-white/10 bg-white/[0.03] p-4">
             <div className="flex items-center gap-2">
@@ -119,7 +120,10 @@ export function Overview({
                     }}
                   />
                 </div>
-                <p className="mt-2 font-mono text-[10px] uppercase tracking-[0.15em] text-zinc-500">{valueText(p)}</p>
+                <p className="mt-2 font-mono text-[10px] uppercase tracking-[0.15em] text-zinc-500">
+                  {valueText(p)}
+                  {s === "unset" && <span className="text-zinc-400"> · {statusLabel(p)}</span>}
+                </p>
               </button>
             );
           })}
@@ -136,7 +140,7 @@ export function Overview({
           <ul className="mt-3 divide-y divide-white/5 rounded-xl border border-white/10 bg-white/[0.02]">
             {sessions.slice(0, 8).map((s) => (
               <li key={s.id} className="flex items-center gap-4 px-5 py-3 text-sm">
-                <span className="w-28 shrink-0 text-zinc-400">{formatDate(s.date)}</span>
+                <span className="w-24 shrink-0 text-zinc-400 sm:w-28">{formatDate(s.date)}</span>
                 <span className="font-semibold text-zinc-100">{s.name}</span>
                 <span className="font-mono text-[10px] uppercase tracking-[0.15em] text-zinc-500">
                   {s.type === "race_weekend" ? "Race weekend" : "Test day"}

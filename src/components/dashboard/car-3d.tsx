@@ -313,7 +313,16 @@ function PulseRing({ position, color }: { position: [number, number, number]; co
 
 // ---------------------------------------------------------------- scene
 
+// Slow spin (15% slower than the first version), and after you drag the car
+// it holds still for 4 seconds before spinning again.
+const SPIN_SPEED = 0.7 * 0.85;
+const RESUME_AFTER_DRAG_MS = 4000;
+
 export default function Car3D(props: Props) {
+  const [heldByUser, setHeldByUser] = useState(false);
+  const resumeTimer = useRef<number | undefined>(undefined);
+  useEffect(() => () => window.clearTimeout(resumeTimer.current), []);
+
   return (
     <Canvas
       camera={{ position: [6.5, 3.4, 6.5], fov: 35 }}
@@ -352,8 +361,18 @@ export default function Car3D(props: Props) {
         maxDistance={16}
         minPolarAngle={0.35}
         maxPolarAngle={Math.PI / 2.1}
-        autoRotate={!props.placing}
-        autoRotateSpeed={0.7}
+        // Settles quickly after you let go instead of coasting.
+        dampingFactor={0.18}
+        autoRotate={!props.placing && !heldByUser}
+        autoRotateSpeed={SPIN_SPEED}
+        onStart={() => {
+          window.clearTimeout(resumeTimer.current);
+          setHeldByUser(true);
+        }}
+        onEnd={() => {
+          window.clearTimeout(resumeTimer.current);
+          resumeTimer.current = window.setTimeout(() => setHeldByUser(false), RESUME_AFTER_DRAG_MS);
+        }}
         target={[0, -0.05, 0]}
       />
 

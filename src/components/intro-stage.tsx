@@ -1,12 +1,14 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { createTimeline, splitText, stagger, utils } from "animejs";
+import { isComputer } from "@/lib/device";
 
 const STEP = 140; // ms between each piece starting
 
 // Runs the page intro in one sequence: label, title lines, subtitle,
 // then the card flips down, then the footer line slides up. Plays once.
+// Computers only: phones/tablets show the page as-is and never download the
+// animation library.
 export function IntroStage({
   className,
   children,
@@ -20,24 +22,29 @@ export function IntroStage({
     const root = rootRef.current;
     if (!root) return;
 
-    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    if (!isComputer() || window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
       root.dataset.intro = "done";
       return;
     }
 
-    const title = root.querySelector<HTMLElement>("[data-split]")!;
-    const label = root.querySelector<HTMLElement>("[data-reveal='label']")!;
-    const subtitle = root.querySelector<HTMLElement>("[data-reveal='subtitle']")!;
-    const card = root.querySelector<HTMLElement>("[data-flip]")!;
-    const footer = root.querySelector<HTMLElement>("[data-reveal='footer']")!;
-    const clipped = [label, subtitle, footer];
+    let cancelled = false;
+    let cleanup: (() => void) | undefined;
 
-    const splitter = splitText(title, { lines: { wrap: "clip" } });
-    let played = false;
+    void import("animejs").then(({ createTimeline, splitText, stagger, utils }) => {
+      if (cancelled) return;
+      const title = root.querySelector<HTMLElement>("[data-split]")!;
+      const label = root.querySelector<HTMLElement>("[data-reveal='label']")!;
+      const subtitle = root.querySelector<HTMLElement>("[data-reveal='subtitle']")!;
+      const card = root.querySelector<HTMLElement>("[data-flip]")!;
+      const footer = root.querySelector<HTMLElement>("[data-reveal='footer']")!;
+      const clipped = [label, subtitle, footer];
 
-    // addEffect runs once the lines exist (after fonts load), and again whenever
-    // the lines are re-split on resize. Only the first run animates.
-    splitter.addEffect(({ lines }: { lines: HTMLElement[] }) => {
+      const splitter = splitText(title, { lines: { wrap: "clip" } });
+      let played = false;
+
+      // addEffect runs once the lines exist (after fonts load), and again whenever
+      // the lines are re-split on resize. Only the first run animates.
+      splitter.addEffect(({ lines }: { lines: HTMLElement[] }) => {
       if (played) return;
       played = true;
 
@@ -77,13 +84,19 @@ export function IntroStage({
           duration: 500,
           ease: "out(3)",
         }, cardAt + STEP);
+      });
+
+      cleanup = () => {
+        splitter.revert();
+        clipped.forEach((el) => el.parentElement?.style.removeProperty("overflow"));
+        card.style.removeProperty("transform");
+        card.style.removeProperty("opacity");
+      };
     });
 
     return () => {
-      splitter.revert();
-      clipped.forEach((el) => el.parentElement?.style.removeProperty("overflow"));
-      card.style.removeProperty("transform");
-      card.style.removeProperty("opacity");
+      cancelled = true;
+      cleanup?.();
     };
   }, []);
 
