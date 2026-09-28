@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, useTransition } from "react";
 import { logEntry, logSession, setLimit, type TrackerResult } from "@/app/actions/tracker";
-import { UNITS, type EntryAction, type Part, type SessionType, type TrackerState } from "@/lib/parts";
+import { UNITS, formatNumber, type EntryAction, type Part, type SessionType, type TrackerState } from "@/lib/parts";
 
 export const fieldClass =
   "w-full rounded-lg border border-white/10 bg-black/60 px-3 py-2.5 text-sm text-white outline-none transition placeholder:text-zinc-600 focus:border-orange/70 focus:ring-2 focus:ring-orange/25";
@@ -275,7 +275,9 @@ export function LimitDialog({ part, onClose, onSaved }: { part: Part; onClose: (
   const { pending, error, save } = useSave(onSaved);
   const [limit, setLimitValue] = useState(part.limit != null ? String(part.limit) : "");
   const [newValue, setNewValue] = useState(part.newValue != null ? String(part.newValue) : "");
+  const [startValue, setStartValue] = useState("");
   const measured = part.tracking === "measured";
+  const counted = part.tracking === "hours" || part.tracking === "weekends";
   const unit = UNITS[part.tracking];
 
   return (
@@ -289,7 +291,7 @@ export function LimitDialog({ part, onClose, onSaved }: { part: Part; onClose: (
       }
       onClose={onClose}
     >
-      <form onSubmit={(e) => { e.preventDefault(); save(() => setLimit({ partId: part.id, limit, newValue: measured ? newValue : undefined })); }}>
+      <form onSubmit={(e) => { e.preventDefault(); save(() => setLimit({ partId: part.id, limit, newValue: measured ? newValue : undefined, startValue: counted ? startValue : undefined })); }}>
         <div className={measured ? "grid grid-cols-2 gap-3" : ""}>
           {measured && (
             <div>
@@ -302,6 +304,25 @@ export function LimitDialog({ part, onClose, onSaved }: { part: Part; onClose: (
             <input id="l-limit" type="number" inputMode="decimal" step="0.1" min="0" required value={limit} onChange={(e) => setLimitValue(e.target.value)} className={fieldClass} autoFocus={!measured} />
           </div>
         </div>
+        {counted && (
+          <div className="mt-4">
+            <label htmlFor="l-start" className={labelClass}>Already on it right now ({unit}, optional)</label>
+            <input
+              id="l-start"
+              type="number"
+              inputMode="decimal"
+              step={part.tracking === "weekends" ? "1" : "0.1"}
+              min="0"
+              value={startValue}
+              onChange={(e) => setStartValue(e.target.value)}
+              placeholder={`Tracker shows ${formatNumber(part.used ?? 0)} now`}
+              className={fieldClass}
+            />
+            <p className="mt-1.5 text-xs text-zinc-500">
+              Sets the count to this number as of today. Sessions logged after this add on top. Leave blank to keep the current count.
+            </p>
+          </div>
+        )}
         <Footer pending={pending} error={error} label="Save limit" onCancel={onClose} />
       </form>
     </Modal>

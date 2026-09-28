@@ -158,19 +158,26 @@ export async function setLimit(input: {
   partId: string;
   limit: string | number;
   newValue?: string | number;
+  /** Optional: how much is already on the part right now (hours or weekends). */
+  startValue?: string | number;
 }): Promise<TrackerResult> {
   return run(async (token) => {
+    const partId = uuid(input.partId);
     const limit = num(input.limit, 0.001, 99999, "Limit");
     const newValue = num(input.newValue, 0.001, 99999, "New value");
+    const startValue = num(input.startValue, 0, 99999, "Amount already on it");
     if (newValue != null && limit != null && newValue <= limit) {
       throw new InputError("The new value has to be bigger than the minimum.");
     }
-    return createServerClient().rpc("tracker_set_limit", {
+    const db = createServerClient();
+    const res = await db.rpc("tracker_set_limit", {
       p_token: token,
-      p_component: uuid(input.partId),
+      p_component: partId,
       p_limit: limit,
       p_new_value: newValue,
     });
+    if (res.error || startValue == null) return res;
+    return db.rpc("tracker_set_start", { p_token: token, p_component: partId, p_value: startValue });
   });
 }
 
