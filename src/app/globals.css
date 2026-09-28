@@ -51,10 +51,47 @@ body {
 .animate-rise-in { animation: rise-in 0.7s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
 .animate-scan { animation: scan 3.5s linear infinite; }
 
+/* Title line reveal (anime.js splitText). Line wrappers must be blocks for the
+   clip + slide to work; the padding/negative margin keeps descenders (the g in
+   "Racing") from being clipped without changing the layout. */
+.hero-title > span:has(> [data-line]) {
+  display: block;
+  padding-bottom: 0.14em;
+  margin-bottom: -0.14em;
+}
+.hero-title [data-line] {
+  display: block;
+}
+
+/* Keeps the title readable where the track runs underneath it. */
+.hero-title {
+  filter: drop-shadow(0 2px 14px rgba(0, 0, 0, 0.9));
+}
+
+/* Hide intro pieces until the animation code has set their start positions,
+   so the finished page doesn't flash first. If the script never runs, the
+   fallback animation shows everything after 2.5s. */
+.hero-header[data-intro="pending"],
+.race-track[data-ready="false"] {
+  opacity: 0;
+  animation: intro-fallback 0s linear 2.5s forwards;
+}
+.race-track[data-ready="false"] [data-car-layer] {
+  display: none;
+}
+@keyframes intro-fallback {
+  to { opacity: 1; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .animate-glow-drift,
   .animate-rise-in,
   .animate-scan {
+    animation: none;
+  }
+  .hero-header[data-intro="pending"],
+  .race-track[data-ready="false"] {
+    opacity: 1;
     animation: none;
   }
 }
