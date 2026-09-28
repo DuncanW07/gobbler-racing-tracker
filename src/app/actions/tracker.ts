@@ -61,6 +61,9 @@ function friendly(message: string): string {
   if (message.includes("cannot_remove")) return "Only parts your team added can be removed.";
   if (message.includes("part_not_found")) return "That part no longer exists. Refresh the page.";
   if (message.includes("name_required")) return "Add your name in Logged by.";
+  if (message.includes("entry_not_found") || message.includes("session_not_found")) {
+    return "Already deleted. Refresh the page.";
+  }
   return "Couldn't save. Check your connection and try again.";
 }
 
@@ -199,5 +202,17 @@ export async function addPart(input: {
 export async function removePart(partId: string): Promise<TrackerResult> {
   return run(async (token) =>
     createServerClient().rpc("tracker_remove_part", { p_token: token, p_component: uuid(partId) }),
+  );
+}
+
+export async function deleteEntry(entryId: string): Promise<TrackerResult> {
+  return run(async (token) =>
+    createServerClient().rpc("tracker_delete_entry", { p_token: token, p_entry: uuid(entryId) }),
+  );
+}
+
+export async function deleteSession(sessionId: string): Promise<TrackerResult> {
+  return run(async (token) =>
+    createServerClient().rpc("tracker_delete_session", { p_token: token, p_session: uuid(sessionId) }),
   );
 }

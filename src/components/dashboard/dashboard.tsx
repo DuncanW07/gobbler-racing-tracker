@@ -3,7 +3,7 @@
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { logout } from "@/app/actions/auth";
-import { addPart, getHistory, refreshState, removePart } from "@/app/actions/tracker";
+import { addPart, deleteEntry, deleteSession, getHistory, refreshState, removePart } from "@/app/actions/tracker";
 import { canShow3D } from "@/lib/device";
 import { formatDate, formatNumber, type HistoryEntry, type TrackerState } from "@/lib/parts";
 import type { CarHighlight } from "./car-3d";
@@ -49,6 +49,7 @@ export function Dashboard({ initialState }: { initialState: TrackerState }) {
   const [draft, setDraft] = useState<NewPart | null>(null);
   const [addError, setAddError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const [saving, startSaving] = useTransition();
 
   // Decided once on load (browser-only info, so it can't run on the server).
@@ -212,6 +213,31 @@ export function Dashboard({ initialState }: { initialState: TrackerState }) {
     });
   };
 
+  const onDeleteEntry = async (id: string) => {
+    setDeletingId(id);
+    const res = await deleteEntry(id);
+    setDeletingId(null);
+    if (!res.ok) {
+      flash(res.error);
+      return;
+    }
+    setState(res.state);
+    if (selectedRef.current) await loadHistory(selectedRef.current);
+    flash("Entry deleted");
+  };
+
+  const onDeleteSession = async (id: string) => {
+    setDeletingId(id);
+    const res = await deleteSession(id);
+    setDeletingId(null);
+    if (!res.ok) {
+      flash(res.error);
+      return;
+    }
+    setState(res.state);
+    flash("Session deleted");
+  };
+
   const lastSession = sessions[0];
   const carOpen = !!show3D && split > 0;
   const onAdd = () => {
@@ -279,9 +305,17 @@ export function Dashboard({ initialState }: { initialState: TrackerState }) {
                 onAction={setDialog}
                 onRemove={onRemove}
                 removing={saving}
+                onDeleteEntry={onDeleteEntry}
+                deletingId={deletingId}
               />
             ) : (
-              <Overview parts={parts} sessions={sessions} onSelect={select} />
+              <Overview
+                parts={parts}
+                sessions={sessions}
+                onSelect={select}
+                onDeleteSession={onDeleteSession}
+                deletingId={deletingId}
+              />
             )}
           </main>
 

@@ -316,7 +316,7 @@ function PulseRing({ position, color }: { position: [number, number, number]; co
 // Slow spin (15% slower than the first version), and after you drag the car
 // it holds still for 4 seconds before spinning again.
 const SPIN_SPEED = 0.7 * 0.85;
-const RESUME_AFTER_DRAG_MS = 4000;
+const RESUME_AFTER_DRAG_MS = 3300;
 
 export default function Car3D(props: Props) {
   const [heldByUser, setHeldByUser] = useState(false);

@@ -22,6 +22,34 @@ body {
 }
 
 /*
+  Cursor: plain text shows the normal arrow. Only places you can actually
+  type get the text cursor; things you can click get the pointing hand.
+  In the base layer so utilities like cursor-col-resize still win.
+*/
+@layer base {
+  body {
+    cursor: default;
+  }
+  input:not([type="button"], [type="submit"], [type="reset"], [type="checkbox"], [type="radio"], [type="range"], [type="color"], [type="file"]),
+  textarea,
+  [contenteditable]:not([contenteditable="false"]) {
+    cursor: text;
+  }
+  button:not(:disabled),
+  a[href],
+  select:not(:disabled),
+  summary,
+  label[for],
+  [role="button"],
+  input:is([type="button"], [type="submit"], [type="reset"], [type="checkbox"], [type="radio"], [type="color"], [type="file"]):not(:disabled) {
+    cursor: pointer;
+  }
+  :disabled {
+    cursor: not-allowed;
+  }
+}
+
+/*
   PERFORMANCE RULE: phones and tablets get only static styling. Anything that
   animates, blurs, or redraws every frame lives inside the "computer" media
   query below (same definition as COMPUTER_QUERY in src/lib/device.ts).

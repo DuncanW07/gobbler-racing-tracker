@@ -13,6 +13,7 @@ import {
   type PartStatus,
   type Session,
 } from "@/lib/parts";
+import { ConfirmButton } from "./confirm-button";
 
 function valueText(p: Part): string {
   const unit = UNITS[p.tracking];
@@ -27,10 +28,14 @@ export function Overview({
   parts,
   sessions,
   onSelect,
+  onDeleteSession,
+  deletingId,
 }: {
   parts: Part[];
   sessions: Session[];
   onSelect: (id: string) => void;
+  onDeleteSession: (id: string) => void;
+  deletingId: string | null;
 }) {
   const counts: Record<PartStatus, number> = { due: 0, soon: 0, ok: 0, unset: 0 };
   parts.forEach((p) => counts[partStatus(p)]++);
@@ -139,13 +144,21 @@ export function Overview({
         ) : (
           <ul className="mt-3 divide-y divide-white/5 rounded-xl border border-white/10 bg-white/[0.02]">
             {sessions.slice(0, 8).map((s) => (
-              <li key={s.id} className="flex items-center gap-4 px-5 py-3 text-sm">
+              <li key={s.id} className="flex flex-wrap items-center gap-x-4 gap-y-2 px-5 py-3 text-sm">
                 <span className="w-24 shrink-0 text-zinc-400 sm:w-28">{formatDate(s.date)}</span>
                 <span className="font-semibold text-zinc-100">{s.name}</span>
                 <span className="font-mono text-[10px] uppercase tracking-[0.15em] text-zinc-500">
                   {s.type === "race_weekend" ? "Race weekend" : "Test day"}
                 </span>
-                <span className="ml-auto font-mono text-zinc-300">{formatNumber(s.hours)} hrs</span>
+                <span className="ml-auto flex max-w-full flex-wrap items-center justify-end gap-3">
+                  <span className="whitespace-nowrap font-mono text-zinc-300">{formatNumber(s.hours)} hrs</span>
+                  <ConfirmButton
+                    className="max-w-full text-left"
+                    steps={["Delete", "Delete this session?", `Yes, delete: removes ${formatNumber(s.hours)} hrs from every part`]}
+                    busy={deletingId === s.id}
+                    onConfirm={() => onDeleteSession(s.id)}
+                  />
+                </span>
               </li>
             ))}
           </ul>

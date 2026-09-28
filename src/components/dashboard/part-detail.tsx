@@ -15,6 +15,7 @@ import {
   type HistoryEntry,
   type Part,
 } from "@/lib/parts";
+import { ConfirmButton } from "./confirm-button";
 
 export type PartAction = EntryAction | "limit";
 
@@ -32,6 +33,8 @@ export function PartDetail({
   onAction,
   onRemove,
   removing,
+  onDeleteEntry,
+  deletingId,
 }: {
   part: Part;
   history: HistoryEntry[] | "loading" | { error: string };
@@ -39,6 +42,8 @@ export function PartDetail({
   onAction: (a: PartAction) => void;
   onRemove: (id: string) => void;
   removing: boolean;
+  onDeleteEntry: (id: string) => void;
+  deletingId: string | null;
 }) {
   const status = STATUS_STYLES[partStatus(part)];
   const unit = UNITS[part.tracking];
@@ -172,6 +177,12 @@ export function PartDetail({
                   </div>
                   {h.notes && <p className="mt-1 whitespace-pre-wrap break-words text-sm text-zinc-400">{h.notes}</p>}
                 </div>
+                <ConfirmButton
+                  className="h-fit"
+                  steps={["Delete", "Confirm delete"]}
+                  busy={deletingId === h.id}
+                  onConfirm={() => onDeleteEntry(h.id)}
+                />
               </li>
             ))}
           </ul>
