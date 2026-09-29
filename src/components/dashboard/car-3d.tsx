@@ -118,7 +118,7 @@ const SHELL = [0.3, 0.04].map(
 );
 
 // Names for pieces that aren't a tracked part.
-const PLAIN: Record<string, string> = { tire: "Tire", rollbar: "Roll bar", driveshaft: "Driveshaft" };
+const PLAIN: Record<string, string> = { rollbar: "Roll bar", driveshaft: "Driveshaft" };
 
 // ---------------------------------------------------------------- pieces
 
