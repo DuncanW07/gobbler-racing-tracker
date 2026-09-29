@@ -1,0 +1,97 @@
+"use client";
+
+import { useState } from "react";
+import { afterWeekend } from "@/app/actions/tracker";
+import type { CheckResult, Part, TrackerState } from "@/lib/parts";
+import { Footer, Modal, ResultPicker, fieldClass, labelClass, useLoggedBy, useSave } from "./dialogs";
+
+type Check = { result: CheckResult | null; notes: string };
+
+// After a race weekend: tick what was replaced, rate each inspection, save once.
+// The lists build themselves: parts replaced every weekend, and parts with an
+// inspection interval.
+export function WeekendChecklist({ parts, onClose, onSaved }: { parts: Part[]; onClose: () => void; onSaved: (s: TrackerState) => void }) {
+  const replace = parts.filter((p) => p.tracking === "weekends" && p.limit === 1);
+  const inspect = parts.filter((p) => p.inspectEvery != null);
+  const [changed, setChanged] = useState(() => new Set(replace.map((p) => p.id)));
+  const [checks, setChecks] = useState<Record<string, Check>>({});
+  const [loggedBy, setLoggedBy] = useLoggedBy();
+  const { pending, error, save } = useSave(onSaved);
+
+  const toggle = (id: string) =>
+    setChanged((s) => {
+      const next = new Set(s);
+      if (!next.delete(id)) next.add(id);
+      return next;
+    });
+  const setCheck = (id: string, patch: Partial<Check>) =>
+    setChecks((c) => ({ ...c, [id]: { ...(c[id] ?? { result: null, notes: "" }), ...patch } }));
+
+  const submit = (e: React.FormEvent) => {
+    e.preventDefault();
+    save(() =>
+      afterWeekend({
+        loggedBy,
+        changed: [...changed],
+        checks: Object.entries(checks).flatMap(([id, c]) => (c.result ? [{ id, result: c.result, notes: c.notes }] : [])),
+      }),
+    );
+  };
+
+  return (
+    <Modal eyebrow="After race weekend" title="Service checklist" subtitle="Anything left unticked or unrated stays flagged on the dashboard." onClose={onClose}>
+      <form onSubmit={submit} className="space-y-6">
+        {replace.length > 0 && (
+          <section>
+            <p className={labelClass}>Replaced</p>
+            <ul className="space-y-1.5">
+              {replace.map((p) => (
+                <li key={p.id}>
+                  <label className="flex items-center gap-2.5 text-sm text-zinc-200">
+                    <input type="checkbox" checked={changed.has(p.id)} onChange={() => toggle(p.id)} className="h-4 w-4 accent-orange" />
+                    {p.name}
+                  </label>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
+
+        {inspect.length > 0 && (
+          <section>
+            <p className={labelClass}>Inspected</p>
+            <ul className="space-y-3">
+              {inspect.map((p) => {
+                const c = checks[p.id];
+                return (
+                  <li key={p.id}>
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <span className="text-sm text-zinc-200">{p.name}</span>
+                      <ResultPicker value={c?.result ?? null} onChange={(result) => setCheck(p.id, { result })} label={p.name} />
+                    </div>
+                    {(c?.result === "watch" || c?.result === "replace") && (
+                      <input
+                        aria-label={`${p.name} notes`}
+                        maxLength={1000}
+                        value={c.notes}
+                        onChange={(e) => setCheck(p.id, { notes: e.target.value })}
+                        placeholder="What did you see?"
+                        className={`${fieldClass} mt-2 py-1.5`}
+                      />
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+          </section>
+        )}
+
+        <div>
+          <label htmlFor="w-by" className={labelClass}>Logged by</label>
+          <input id="w-by" required maxLength={60} value={loggedBy} onChange={(e) => setLoggedBy(e.target.value)} placeholder="Your name" className={fieldClass} />
+        </div>
+        <Footer pending={pending} error={error} label="Save checklist" onCancel={onClose} />
+      </form>
+    </Modal>
+  );
+}

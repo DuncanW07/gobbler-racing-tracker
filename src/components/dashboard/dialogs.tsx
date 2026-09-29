@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, useTransition } from "react";
 import { logEntry, logSession, setLimit, type TrackerResult } from "@/app/actions/tracker";
-import { UNITS, formatNumber, type EntryAction, type Part, type SessionType, type TrackerState } from "@/lib/parts";
+import { RESULT_LABELS, UNITS, formatNumber, type CheckResult, type EntryAction, type Part, type SessionType, type TrackerState } from "@/lib/parts";
 
 export const fieldClass =
   "w-full rounded-lg border border-white/10 bg-black/60 px-3 py-2.5 text-sm text-white outline-none transition placeholder:text-zinc-600 focus:border-orange/70 focus:ring-2 focus:ring-orange/25";
@@ -71,7 +71,32 @@ export function Modal({
   );
 }
 
-function Footer({ pending, error, label, onCancel }: { pending: boolean; error: string | null; label: string; onCancel: () => void }) {
+// Good / Watch / Replace. Click the selected one again to clear it.
+const RESULT_TONES: Record<CheckResult, string> = {
+  good: "border-emerald-400/70 bg-emerald-400/15 text-emerald-200",
+  watch: "border-amber-400/70 bg-amber-400/15 text-amber-200",
+  replace: "border-red-500/70 bg-red-500/15 text-red-200",
+};
+export function ResultPicker({ value, onChange, label }: { value: CheckResult | null; onChange: (v: CheckResult | null) => void; label: string }) {
+  return (
+    <div role="radiogroup" aria-label={label} className="flex gap-1.5">
+      {(Object.keys(RESULT_LABELS) as CheckResult[]).map((r) => (
+        <button
+          key={r}
+          type="button"
+          role="radio"
+          aria-checked={value === r}
+          onClick={() => onChange(value === r ? null : r)}
+          className={`rounded-md border px-2.5 py-1 text-xs transition ${value === r ? RESULT_TONES[r] : "border-white/10 text-zinc-400 hover:text-zinc-200"}`}
+        >
+          {RESULT_LABELS[r]}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+export function Footer({ pending, error, label, onCancel }: { pending: boolean; error: string | null; label: string; onCancel: () => void }) {
   return (
     <>
       {error && (
@@ -96,7 +121,7 @@ function Footer({ pending, error, label, onCancel }: { pending: boolean; error: 
 }
 
 // Shared submit handling: run the action, close on success, show errors.
-function useSave(onSaved: (state: TrackerState) => void) {
+export function useSave(onSaved: (state: TrackerState) => void) {
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const save = (action: () => Promise<TrackerResult>) => {
@@ -207,6 +232,7 @@ export function EntryDialog({
   const [measurement, setMeasurement] = useState("");
   const [cost, setCost] = useState("");
   const [notes, setNotes] = useState("");
+  const [result, setResult] = useState<CheckResult | null>(null);
   const copy = ENTRY_COPY[action];
   const measured = part.tracking === "measured" && action !== "issue";
   const unit = UNITS[part.tracking];
@@ -216,7 +242,7 @@ export function EntryDialog({
       <form
         onSubmit={(e) => {
           e.preventDefault();
-          save(() => logEntry({ partId: part.id, action, measurement, cost, loggedBy, notes }));
+          save(() => logEntry({ partId: part.id, action, measurement, cost, loggedBy, notes, result }));
         }}
       >
         <div className="space-y-4">
@@ -237,6 +263,13 @@ export function EntryDialog({
                 className={fieldClass}
                 autoFocus
               />
+            </div>
+          )}
+          {action === "checked" && (
+            <div>
+              <p className={labelClass}>Result (optional)</p>
+              <ResultPicker value={result} onChange={setResult} label="Result" />
+              <p className="mt-1.5 text-xs text-zinc-500">Watch turns the part amber, Replace turns it red, until it&apos;s changed.</p>
             </div>
           )}
           {action !== "checked" && (
@@ -276,23 +309,37 @@ export function LimitDialog({ part, onClose, onSaved }: { part: Part; onClose: (
   const [limit, setLimitValue] = useState(part.limit != null ? String(part.limit) : "");
   const [newValue, setNewValue] = useState(part.newValue != null ? String(part.newValue) : "");
   const [startValue, setStartValue] = useState("");
+  const [inspectEvery, setInspectEvery] = useState(part.inspectEvery != null ? String(part.inspectEvery) : "");
+  const [countTestDays, setCountTestDays] = useState(part.countTestDays);
   const measured = part.tracking === "measured";
   const counted = part.tracking === "hours" || part.tracking === "weekends";
+  const condition = part.tracking === "condition";
   const unit = UNITS[part.tracking];
 
   return (
     <Modal
-      eyebrow="Set limit"
+      eyebrow={condition ? "Inspection" : "Set limit"}
       title={part.name}
       subtitle={
-        measured
+        condition
+          ? "How often it gets inspected. It turns amber when an inspection is due."
+          : measured
           ? "Enter the thickness when new and the minimum allowed. The part turns amber in the last 20% and red at the minimum."
           : `Change interval in ${unit}. The part turns amber at 80% and red at 100%.`
       }
       onClose={onClose}
     >
-      <form onSubmit={(e) => { e.preventDefault(); save(() => setLimit({ partId: part.id, limit, newValue: measured ? newValue : undefined, startValue: counted ? startValue : undefined })); }}>
-        <div className={measured ? "grid grid-cols-2 gap-3" : ""}>
+      <form onSubmit={(e) => { e.preventDefault(); save(() =>
+            setLimit({
+              partId: part.id,
+              limit: condition ? "" : limit,
+              newValue: measured ? newValue : undefined,
+              startValue: counted ? startValue : undefined,
+              inspectEvery,
+              countTestDays: part.tracking === "weekends" && countTestDays,
+            }),
+          ); }}>
+        {!condition && <div className={measured ? "grid grid-cols-2 gap-3" : ""}>
           {measured && (
             <div>
               <label htmlFor="l-new" className={labelClass}>When new ({unit})</label>
@@ -303,7 +350,7 @@ export function LimitDialog({ part, onClose, onSaved }: { part: Part; onClose: (
             <label htmlFor="l-limit" className={labelClass}>{measured ? `Minimum (${unit})` : `Change every (${unit})`}</label>
             <input id="l-limit" type="number" inputMode="decimal" step="0.1" min="0" required value={limit} onChange={(e) => setLimitValue(e.target.value)} className={fieldClass} autoFocus={!measured} />
           </div>
-        </div>
+        </div>}
         {counted && (
           <div className="mt-4">
             <label htmlFor="l-start" className={labelClass}>Already on it right now ({unit}, optional)</label>
@@ -323,7 +370,17 @@ export function LimitDialog({ part, onClose, onSaved }: { part: Part; onClose: (
             </p>
           </div>
         )}
-        <Footer pending={pending} error={error} label="Save limit" onCancel={onClose} />
+        {part.tracking === "weekends" && (
+          <label className="mt-4 flex items-center gap-2.5 text-sm text-zinc-300">
+            <input type="checkbox" checked={countTestDays} onChange={(e) => setCountTestDays(e.target.checked)} className="h-4 w-4 accent-orange" />
+            Test days count as a weekend too
+          </label>
+        )}
+        <div className={condition ? "" : "mt-4"}>
+          <label htmlFor="l-inspect" className={labelClass}>Inspect every (weekends{condition ? "" : ", optional"})</label>
+          <input id="l-inspect" type="number" inputMode="numeric" step="1" min="1" max="50" required={condition} value={inspectEvery} onChange={(e) => setInspectEvery(e.target.value)} placeholder="e.g. 1 = after every weekend" className={fieldClass} autoFocus={condition} />
+        </div>
+        <Footer pending={pending} error={error} label={condition ? "Save" : "Save limit"} onCancel={onClose} />
       </form>
     </Modal>
   );

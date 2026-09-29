@@ -13,6 +13,7 @@ import { PartDetail, type PartAction } from "./part-detail";
 import { AddPartDialog, type NewPart } from "./add-part-dialog";
 import { EntryDialog, LimitDialog, LogSessionDialog } from "./dialogs";
 import { TeamSettingsDialog } from "./team-settings-dialog";
+import { WeekendChecklist } from "./weekend-checklist";
 
 // Only downloaded on computers (phones/tablets never load the 3D code).
 const Car3D = dynamic(() => import("./car-3d"), {
@@ -44,7 +45,7 @@ export function Dashboard({ initialState }: { initialState: TrackerState }) {
   const [dragging, setDragging] = useState(false);
   const splitRef = useRef<HTMLDivElement>(null);
   const splitValue = useRef(SPLIT_DEFAULT);
-  const [dialog, setDialog] = useState<null | "session" | "settings" | PartAction>(null);
+  const [dialog, setDialog] = useState<null | "session" | "settings" | "checklist" | PartAction>(null);
   const [adding, setAdding] = useState(false);
   const [placing, setPlacing] = useState(false);
   const [draft, setDraft] = useState<NewPart | null>(null);
@@ -334,6 +335,7 @@ export function Dashboard({ initialState }: { initialState: TrackerState }) {
                 onSelect={select}
                 onDeleteSession={onDeleteSession}
                 deletingId={deletingId}
+                onChecklist={() => setDialog("checklist")}
               />
             )}
           </main>
@@ -386,6 +388,9 @@ export function Dashboard({ initialState }: { initialState: TrackerState }) {
       </div>
 
       {/* Dialogs */}
+      {dialog === "checklist" && (
+        <WeekendChecklist parts={parts} onClose={() => setDialog(null)} onSaved={(s) => onSaved(s, "Checklist saved")} />
+      )}
       {dialog === "settings" && (
         <TeamSettingsDialog
           onClose={() => setDialog(null)}

@@ -247,6 +247,9 @@ function Car({ highlight, markers, onPickPart, placing, onPlace, hoverKey, setHo
       <Piece pieceKey="oil-pan" position={[0, 0.22, 0.92]} {...common}>
         <boxGeometry args={[0.4, 0.1, 0.38]} />
       </Piece>
+      <Piece pieceKey="airbox" position={[0.3, 0.62, 1.34]} {...common}>
+        <boxGeometry args={[0.2, 0.14, 0.22]} />
+      </Piece>
       <Piece pieceKey="clutch" position={[0, 0.42, 0.64]} rotation={[Math.PI / 2, 0, 0]} {...common}>
         <cylinderGeometry args={[0.15, 0.15, 0.08, 24]} />
       </Piece>
@@ -254,6 +257,10 @@ function Car({ highlight, markers, onPickPart, placing, onPlace, hoverKey, setHo
         <cylinderGeometry args={[0.1, 0.15, 0.6, 16]} />
       </Piece>
       <Segment pieceKey="driveshaft" from={[0, 0.38, 0]} to={[0, 0.34, REAR_Z + 0.16]} radius={0.035} {...common} />
+      {/* PPF: the frame tying the transmission to the differential */}
+      <Piece pieceKey="ppf" position={[0.11, 0.44, -0.47]} {...common}>
+        <boxGeometry args={[0.05, 0.07, 1.05]} />
+      </Piece>
       <Piece pieceKey="differential" position={[0, 0.33, REAR_Z]} {...common}>
         <boxGeometry args={[0.32, 0.24, 0.28]} />
       </Piece>

@@ -3,6 +3,7 @@
 import { createServerClient } from "@/lib/supabase/server";
 import { normalizeState, sessionToken } from "@/lib/tracker";
 import type {
+  CheckResult,
   Corner,
   EntryAction,
   HistoryEntry,
@@ -22,6 +23,7 @@ const TRACKING: Tracking[] = ["hours", "weekends", "measured", "condition"];
 const CORNERS: Corner[] = ["FL", "FR", "RL", "RR"];
 const ACTIONS: EntryAction[] = ["checked", "changed", "issue"];
 const SESSION_TYPES: SessionType[] = ["race_weekend", "test_day"];
+const RESULTS: CheckResult[] = ["good", "watch", "replace"];
 
 class InputError extends Error {}
 
@@ -61,6 +63,7 @@ function friendly(message: string): string {
   if (message.includes("cannot_remove")) return "Only parts your team added can be removed.";
   if (message.includes("part_not_found")) return "That part no longer exists. Refresh the page.";
   if (message.includes("name_required")) return "Add your name in Logged by.";
+  if (message.includes("nothing_selected")) return "Tick at least one item.";
   if (message.includes("entry_not_found") || message.includes("session_not_found")) {
     return "Already deleted. Refresh the page.";
   }
@@ -138,11 +141,13 @@ export async function logEntry(input: {
   cost?: string | number;
   loggedBy?: string;
   notes?: string;
+  result?: CheckResult | null;
 }): Promise<TrackerResult> {
   return run(async (token) => {
     const loggedBy = text(input.loggedBy, 60);
     if (!loggedBy) throw new InputError("Add your name in Logged by.");
     return createServerClient().rpc("tracker_log_entry", {
+      p_result: input.result ? pick(input.result, RESULTS) : null,
       p_token: token,
       p_component: uuid(input.partId),
       p_action: pick(input.action, ACTIONS),
@@ -160,10 +165,15 @@ export async function setLimit(input: {
   newValue?: string | number;
   /** Optional: how much is already on the part right now (hours or weekends). */
   startValue?: string | number;
+  /** Inspect every N weekends (blank = none). */
+  inspectEvery?: string | number;
+  countTestDays?: boolean;
 }): Promise<TrackerResult> {
   return run(async (token) => {
     const partId = uuid(input.partId);
     const limit = num(input.limit, 0.001, 99999, "Limit");
+    const inspectEvery = num(input.inspectEvery, 1, 50, "Inspect every");
+    if (inspectEvery != null && !Number.isInteger(inspectEvery)) throw new InputError("Inspect every must be a whole number.");
     const newValue = num(input.newValue, 0.001, 99999, "New value");
     const startValue = num(input.startValue, 0, 99999, "Amount already on it");
     if (newValue != null && limit != null && newValue <= limit) {
@@ -176,8 +186,37 @@ export async function setLimit(input: {
       p_limit: limit,
       p_new_value: newValue,
     });
-    if (res.error || startValue == null) return res;
+    if (res.error) return res;
+    const sched = await db.rpc("tracker_set_schedule", {
+      p_token: token,
+      p_component: partId,
+      p_inspect_every: inspectEvery,
+      p_count_test_days: input.countTestDays === true,
+    });
+    if (sched.error || startValue == null) return sched;
     return db.rpc("tracker_set_start", { p_token: token, p_component: partId, p_value: startValue });
+  });
+}
+
+// After a race weekend: every replaced part and every inspection in one save.
+export async function afterWeekend(input: {
+  loggedBy: string;
+  changed: string[];
+  checks: { id: string; result: CheckResult; notes?: string }[];
+}): Promise<TrackerResult> {
+  return run(async (token) => {
+    const loggedBy = text(input.loggedBy, 60);
+    if (!loggedBy) throw new InputError("Add your name in Logged by.");
+    if (!Array.isArray(input.changed) || !Array.isArray(input.checks) || input.changed.length + input.checks.length > 100) {
+      throw new InputError("Invalid input.");
+    }
+    if (!input.changed.length && !input.checks.length) throw new InputError("Tick at least one item.");
+    return createServerClient().rpc("tracker_after_weekend", {
+      p_token: token,
+      p_logged_by: loggedBy,
+      p_changed: input.changed.map(uuid),
+      p_checks: input.checks.map((c) => ({ id: uuid(c.id), result: pick(c.result, RESULTS), notes: text(c.notes, 1000) })),
+    });
   });
 }
 

@@ -3,11 +3,15 @@
 import {
   ACTION_LABELS,
   GROUP_LABELS,
+  RESULT_LABELS,
+  RESULT_TEXT,
   STATUS_STYLES,
   TRACKING_LABELS,
   UNITS,
   formatDate,
   formatNumber,
+  inspectionDue,
+  withUnit,
   lifeUsed,
   partStatus,
   statusLabel,
@@ -64,7 +68,7 @@ export function PartDetail({
     lifeText = `${formatNumber(part.used)} / ${formatNumber(part.limit)} ${unit}`;
     lifeHint = part.limit == null
       ? "No change interval set yet. Use Set limit once the team gives you one."
-      : `${formatNumber(Math.max(part.limit - (part.used ?? 0), 0))} ${unit} left before a change is due.`;
+      : `${withUnit(Math.max(part.limit - (part.used ?? 0), 0), unit)} left before a change is due.`;
   } else if (measured) {
     lifeText = `${formatNumber(part.current)} ${unit} now`;
     lifeHint = part.limit == null
@@ -76,6 +80,10 @@ export function PartDetail({
     lifeText = part.lastEntry ? `Last looked at ${formatDate(part.lastEntry)}` : "Not checked yet";
     lifeHint = "Tracked by inspections. Log a check each time it's looked at, or report an issue.";
   }
+
+  const inspectText = part.inspectEvery == null ? null
+    : inspectionDue(part) ? "Inspection due now."
+    : `Inspect every ${part.inspectEvery === 1 ? "race weekend" : `${part.inspectEvery} weekends`}. Next due in ${withUnit(part.inspectEvery - (part.sinceCheck ?? 0), "weekends")}.`;
 
   const barColor = partStatus(part) === "due" ? "#ef4444" : partStatus(part) === "soon" ? "#fbbf24" : part.color;
 
@@ -115,18 +123,25 @@ export function PartDetail({
           </div>
         )}
         <p className="mt-3 text-sm text-zinc-500">{lifeHint}</p>
+        {inspectText && <p className={`mt-1 text-sm ${inspectionDue(part) ? "text-amber-300" : "text-zinc-500"}`}>{inspectText}</p>}
+        {part.checkResult && part.checkResult !== "good" && (
+          <p className={`mt-1 text-sm ${RESULT_TEXT[part.checkResult]}`}>
+            Last check: {RESULT_LABELS[part.checkResult]}. Stays flagged until the part is changed or a later check says Good.
+          </p>
+        )}
+        {part.countTestDays && <p className="mt-1 text-sm text-zinc-500">Test days count as a weekend.</p>}
       </section>
 
       <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
         {stat(
           measured ? "Minimum" : counted ? "Change every" : "Entries",
           measured || counted
-            ? part.limit != null ? `${formatNumber(part.limit)} ${unit}` : "—"
+            ? part.limit != null ? withUnit(part.limit, unit) : "—"
             : Array.isArray(history) ? String(history.length) : "—",
         )}
         {stat(
           measured ? "Last measured" : counted ? "Since last change" : "Last entry",
-          measured ? `${formatNumber(part.current)} ${part.current != null ? unit : ""}` : counted ? `${formatNumber(part.used)} ${unit}` : formatDate(part.lastEntry),
+          measured ? `${formatNumber(part.current)} ${part.current != null ? unit : ""}` : counted ? withUnit(part.used, unit) : formatDate(part.lastEntry),
         )}
         {stat("Last changed", formatDate(part.lastChanged))}
       </div>
@@ -137,7 +152,7 @@ export function PartDetail({
           ["checked", "Log check"],
           ["changed", "Log change"],
           ["issue", "Report issue"],
-          ...(part.tracking === "condition" ? [] : [["limit", part.limit != null ? "Edit limit" : "Set limit"]]),
+          ["limit", part.tracking === "condition" ? "Inspection schedule" : part.limit != null ? "Edit limit" : "Set limit"],
         ] as [PartAction, string][]).map(([action, label]) => (
           <button
             key={action}
@@ -173,6 +188,7 @@ export function PartDetail({
                     <span className="text-zinc-200">{formatDate(h.at)}</span>
                     {h.measurement != null && <span className="font-mono text-zinc-300">{formatNumber(h.measurement)} {unit}</span>}
                     {h.cost != null && <span className="font-mono text-zinc-400">${h.cost.toFixed(2)}</span>}
+                    {h.result && <span className={RESULT_TEXT[h.result]}>{RESULT_LABELS[h.result]}</span>}
                     {h.loggedBy && <span className="text-zinc-500">by {h.loggedBy}</span>}
                   </div>
                   {h.notes && <p className="mt-1 whitespace-pre-wrap break-words text-sm text-zinc-400">{h.notes}</p>}

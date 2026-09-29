@@ -30,12 +30,14 @@ export function Overview({
   onSelect,
   onDeleteSession,
   deletingId,
+  onChecklist,
 }: {
   parts: Part[];
   sessions: Session[];
   onSelect: (id: string) => void;
   onDeleteSession: (id: string) => void;
   deletingId: string | null;
+  onChecklist: () => void;
 }) {
   const counts: Record<PartStatus, number> = { due: 0, soon: 0, ok: 0, unset: 0 };
   parts.forEach((p) => counts[partStatus(p)]++);
@@ -52,8 +54,19 @@ export function Overview({
 
   return (
     <div className="p-4 sm:p-8">
-      <p className="font-mono text-[11px] uppercase tracking-[0.25em] text-orange">Overview</p>
-      <h1 className="mt-1 text-3xl font-black tracking-tight">Car status</h1>
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <p className="font-mono text-[11px] uppercase tracking-[0.25em] text-orange">Overview</p>
+          <h1 className="mt-1 text-3xl font-black tracking-tight">Car status</h1>
+        </div>
+        <button
+          type="button"
+          onClick={onChecklist}
+          className="rounded-lg border border-orange/50 px-4 py-2 text-sm font-semibold text-orange transition hover:bg-orange/10"
+        >
+          After race weekend checklist
+        </button>
+      </div>
 
       <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
         {tiles.map(({ status, tone }) => (
@@ -127,7 +140,7 @@ export function Overview({
                 </div>
                 <p className="mt-2 font-mono text-[10px] uppercase tracking-[0.15em] text-zinc-500">
                   {valueText(p)}
-                  {s === "unset" && <span className="text-zinc-400"> · {statusLabel(p)}</span>}
+                  {s === "unset" && p.tracking !== "condition" && <span className="text-zinc-400"> · {statusLabel(p)}</span>}
                 </p>
               </button>
             );

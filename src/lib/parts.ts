@@ -27,7 +27,17 @@ export type Part = {
   current: number | null;
   lastChanged: string | null;
   lastEntry: string | null;
+  /** Weekend-counted parts: test days count as a weekend too. */
+  countTestDays: boolean;
+  /** Inspect every N weekends (null = no scheduled inspection). */
+  inspectEvery: number | null;
+  /** Weekends run since the last check or change (only with inspectEvery). */
+  sinceCheck: number | null;
+  /** Result of the latest check since the last change. */
+  checkResult: CheckResult | null;
 };
+
+export type CheckResult = "good" | "watch" | "replace";
 
 export type SessionType = "race_weekend" | "test_day";
 
@@ -52,6 +62,7 @@ export type HistoryEntry = {
   loggedBy: string | null;
   notes: string | null;
   at: string;
+  result: CheckResult | null;
 };
 
 // Neon highlight colors: they stand out against the dark and maroon car view.
@@ -92,6 +103,9 @@ export const ACTION_LABELS: Record<HistoryEntry["action"], string> = {
 
 export type PartStatus = "unset" | "ok" | "soon" | "due";
 
+export const RESULT_LABELS: Record<CheckResult, string> = { good: "Good", watch: "Watch", replace: "Replace" };
+export const RESULT_TEXT: Record<CheckResult, string> = { good: "text-emerald-300", watch: "text-amber-300", replace: "text-red-300" };
+
 // How much of the part's life is used, 0..1+ (null if it can't be worked out yet).
 export function lifeUsed(part: Part): number | null {
   if (part.tracking === "hours" || part.tracking === "weekends") {
@@ -107,7 +121,8 @@ export function lifeUsed(part: Part): number | null {
   return null;
 }
 
-export function partStatus(part: Part): PartStatus {
+// Status from the part's life alone (count or measurement).
+function lifeStatus(part: Part): PartStatus {
   if (part.tracking === "condition") return part.lastEntry ? "ok" : "unset";
   if (part.tracking === "measured") {
     if (part.limit == null || part.current == null) return "unset";
@@ -124,6 +139,18 @@ export function partStatus(part: Part): PartStatus {
   return "ok";
 }
 
+export const inspectionDue = (p: Part) => p.inspectEvery != null && (p.sinceCheck ?? 0) >= p.inspectEvery;
+
+// Checks can make a part worse than its count says: "watch" or an overdue
+// inspection turns it amber, "replace" turns it red.
+const RANK: PartStatus[] = ["unset", "ok", "soon", "due"];
+export function partStatus(part: Part): PartStatus {
+  const life = lifeStatus(part);
+  const check: PartStatus =
+    part.checkResult === "replace" ? "due" : part.checkResult === "watch" || inspectionDue(part) ? "soon" : "unset";
+  return RANK[Math.max(RANK.indexOf(life), RANK.indexOf(check))];
+}
+
 export const STATUS_STYLES: Record<PartStatus, { dot: string; label: string }> = {
   unset: { dot: "bg-zinc-600", label: "Not set up" },
   ok: { dot: "bg-emerald-400", label: "Good" },
@@ -134,6 +161,9 @@ export const STATUS_STYLES: Record<PartStatus, { dot: string; label: string }> =
 // Status wording for one part. "Not set up" says what's missing.
 export function statusLabel(part: Part): string {
   const s = partStatus(part);
+  if (s !== lifeStatus(part)) {
+    return part.checkResult === "replace" ? "Check: replace" : part.checkResult === "watch" ? "Check: watch" : "Inspection due";
+  }
   if (s !== "unset") return STATUS_STYLES[s].label;
   if (part.tracking === "condition") return "Not checked yet";
   if (part.limit == null) return "Needs a limit";
@@ -145,6 +175,10 @@ export function formatNumber(n: number | null | undefined, digits = 1): string {
   if (n == null) return "—";
   return Number.isInteger(n) ? String(n) : n.toFixed(digits);
 }
+
+// "1 weekend", "2 weekends", "3 hrs".
+export const withUnit = (n: number | null | undefined, unit: string) =>
+  `${formatNumber(n)} ${n === 1 && unit === "weekends" ? "weekend" : unit}`;
 
 export function formatDate(iso: string | null | undefined): string {
   if (!iso) return "—";
