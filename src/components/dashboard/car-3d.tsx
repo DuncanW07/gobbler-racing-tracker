@@ -36,6 +36,8 @@ type Props = {
   highlight: CarHighlight | null;
   /** Tracked parts that use this piece of the car (for the hover label). */
   describe: (key: string) => HoverLine[];
+  /** Worn pieces: piece key -> "soon" (orange, watch) or "due" (red, replace). */
+  wear: Record<string, "soon" | "due">;
   /** Shows glowing markers for custom parts placed on the car. */
   markers: { position: V3; color: string; active: boolean }[];
   onPickPart: (key: string) => void;
@@ -86,18 +88,20 @@ function bodyGeometry() {
 
 // ---------------------------------------------------------------- materials
 
-const HOVER = "#ff8a2b";
+const HOVER = "#e4f6ff";
+// Wear on the car: slight orange for watch, strong red for replace.
+const WEAR = { soon: { color: "#fb923c", power: 1.1 }, due: { color: "#ef4444", power: 1.8 } };
 
-// Pieces share materials: one per (glow color, faded) combo, made once.
+// Pieces share materials: one per (glow color, strength, faded) combo, made once.
 const materials = new Map<string, THREE.MeshStandardMaterial>();
-function partMaterial(glow: string | null, faded: boolean) {
-  const id = `${glow}|${faded}`;
+function partMaterial(glow: string | null, faded: boolean, power = 2.2) {
+  const id = `${glow}|${faded}|${power}`;
   let m = materials.get(id);
   if (!m) {
     m = new THREE.MeshStandardMaterial({
       color: glow ?? "#3f3f46",
       emissive: glow ?? "#000000",
-      emissiveIntensity: glow ? 2.2 : 0,
+      emissiveIntensity: glow ? power : 0,
       metalness: 0.2,
       roughness: 0.55,
       transparent: faded,
@@ -126,6 +130,7 @@ type PieceProps = {
   pieceKey: string;
   highlight: CarHighlight | null;
   hoverKey: string | null;
+  wear: Props["wear"];
   onPick: (key: string, e: ThreeEvent<MouseEvent>) => void;
   setHover: React.Dispatch<React.SetStateAction<string | null>>;
   position?: V3;
@@ -133,15 +138,17 @@ type PieceProps = {
   children: React.ReactNode; // geometry
 };
 
-function Piece({ pieceKey, highlight, hoverKey, onPick, setHover, position, rotation, children }: PieceProps) {
-  // Selected part glows in its color; the piece under the cursor glows orange.
-  const glow = highlight?.keys.includes(pieceKey) ? highlight.color : hoverKey === pieceKey ? HOVER : null;
+function Piece({ pieceKey, highlight, hoverKey, wear, onPick, setHover, position, rotation, children }: PieceProps) {
+  // Selected part glows in its color, the piece under the cursor glows white, and
+  // otherwise worn pieces show their wear (hidden while another part is selected).
+  const worn = !highlight && wear[pieceKey] ? WEAR[wear[pieceKey]] : null;
+  const glow = highlight?.keys.includes(pieceKey) ? highlight.color : hoverKey === pieceKey ? HOVER : worn?.color ?? null;
   const faded = !!highlight && !glow;
   return (
     <mesh
       position={position}
       rotation={rotation}
-      material={partMaterial(glow, faded)}
+      material={partMaterial(glow, faded, glow === worn?.color ? worn.power : 2.2)}
       userData={{ piece: pieceKey }}
       onClick={(e) => onPick(pieceKey, e)}
       onPointerOver={(e) => { e.stopPropagation(); setHover(pieceKey); }}
@@ -184,7 +191,7 @@ function Segment({
 
 type CarProps = Props & { hoverKey: string | null; setHover: PieceProps["setHover"] };
 
-function Car({ highlight, markers, onPickPart, placing, onPlace, hoverKey, setHover }: CarProps) {
+function Car({ highlight, markers, onPickPart, placing, onPlace, hoverKey, setHover, wear }: CarProps) {
   const body = useMemo(() => bodyGeometry(), []);
   const rootRef = useRef<THREE.Group>(null);
   const xray = highlight !== null;
@@ -212,7 +219,7 @@ function Car({ highlight, markers, onPickPart, placing, onPlace, hoverKey, setHo
     onPickPart(key);
   };
 
-  const common = { highlight, hoverKey, setHover, onPick: pick };
+  const common = { highlight, hoverKey, setHover, wear, onPick: pick };
 
   return (
     <group ref={rootRef}>

@@ -64,6 +64,7 @@ function friendly(message: string): string {
   if (message.includes("part_not_found")) return "That part no longer exists. Refresh the page.";
   if (message.includes("name_required")) return "Add your name in Logged by.";
   if (message.includes("nothing_selected")) return "Tick at least one item.";
+  if (message.includes("hours_required")) return "Enter the hours on track.";
   if (message.includes("entry_not_found") || message.includes("session_not_found")) {
     return "Already deleted. Refresh the page.";
   }
@@ -128,7 +129,11 @@ export async function logSession(input: {
       p_name: text(input.name, 80, true),
       p_date: date,
       p_type: pick(input.type, SESSION_TYPES),
-      p_hours: num(input.hours, 0, 100, "Time on track"),
+      p_hours: (() => {
+        const h = num(input.hours, 0.1, 100, "Hours on track");
+        if (h == null) throw new InputError("Enter the hours on track.");
+        return h;
+      })(),
       p_notes: text(input.notes, 1000),
     });
   });
@@ -167,7 +172,7 @@ export async function setLimit(input: {
   startValue?: string | number;
   /** Inspect every N weekends (blank = none). */
   inspectEvery?: string | number;
-  countTestDays?: boolean;
+  dueAfterRace?: boolean;
 }): Promise<TrackerResult> {
   return run(async (token) => {
     const partId = uuid(input.partId);
@@ -191,7 +196,8 @@ export async function setLimit(input: {
       p_token: token,
       p_component: partId,
       p_inspect_every: inspectEvery,
-      p_count_test_days: input.countTestDays === true,
+      p_count_test_days: null,
+      p_due_after_race: typeof input.dueAfterRace === "boolean" ? input.dueAfterRace : null,
     });
     if (sched.error || startValue == null) return sched;
     return db.rpc("tracker_set_start", { p_token: token, p_component: partId, p_value: startValue });

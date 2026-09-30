@@ -11,7 +11,7 @@ type Check = { result: CheckResult | null; notes: string };
 // The lists build themselves: parts replaced every weekend, and parts with an
 // inspection interval.
 export function WeekendChecklist({ parts, onClose, onSaved }: { parts: Part[]; onClose: () => void; onSaved: (s: TrackerState) => void }) {
-  const replace = parts.filter((p) => p.tracking === "weekends" && p.limit === 1);
+  const replace = parts.filter((p) => p.dueAfterRace);
   const inspect = parts.filter((p) => p.inspectEvery != null);
   const [changed, setChanged] = useState(() => new Set(replace.map((p) => p.id)));
   const [checks, setChecks] = useState<Record<string, Check>>({});
@@ -39,7 +39,7 @@ export function WeekendChecklist({ parts, onClose, onSaved }: { parts: Part[]; o
   };
 
   return (
-    <Modal eyebrow="After race weekend" title="Service checklist" subtitle="Anything left unticked or unrated stays flagged on the dashboard." onClose={onClose}>
+    <Modal eyebrow="After race weekend" title="Service checklist" subtitle="Anything left unticked or unrated stays flagged. Skip it now and it's on the overview later." onClose={onClose}>
       <form onSubmit={submit} className="space-y-6">
         {replace.length > 0 && (
           <section>

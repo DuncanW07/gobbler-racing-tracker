@@ -1,0 +1,409 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8" />
+<style>html,body{margin:0;background:#000}canvas{display:block}</style>
+<script type="importmap">
+{ "imports": {
+  "three": "/node_modules/three/build/three.module.js",
+  "three/addons/": "/node_modules/three/examples/jsm/"
+} }
+</script>
+</head>
+<body>
+<script type="module">
+import * as THREE from "three";
+import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
+import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
+import { UnrealBloomPass } from "three/addons/postprocessing/UnrealBloomPass.js";
+import { OutputPass } from "three/addons/postprocessing/OutputPass.js";
+import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.js";
+
+// Retro neon-wireframe renders of MX-5 Cup (ND) parts, one per tile on the overview.
+// Rendered once in white; the site tints them gray / orange / red by status.
+
+const q = new URLSearchParams(location.search);
+const PART = q.get("part") ?? "rotor";
+const ZOOM = Number(q.get("zoom") ?? 0.86);
+const INK = new THREE.Color(q.get("ink") ?? "#e4f6ff");
+const SIZE = 512;
+const TAU = Math.PI * 2;
+
+// Fill glows at grazing angles so round things show their outline; crisp edges on
+// top; faint hidden lines for the blueprint feel.
+const FILL = new THREE.ShaderMaterial({
+  uniforms: { ink: { value: INK } },
+  vertexShader: `varying vec3 n; varying vec3 v;
+    void main() { vec4 mv = modelViewMatrix * vec4(position, 1.0); n = normalize(normalMatrix * normal); v = normalize(-mv.xyz); gl_Position = projectionMatrix * mv; }`,
+  fragmentShader: `uniform vec3 ink; varying vec3 n; varying vec3 v;
+    void main() { float r = pow(1.0 - abs(dot(normalize(n), normalize(v))), 3.0); gl_FragColor = vec4(ink * (0.03 + 0.75 * r), 1.0); }`,
+  polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1, side: THREE.DoubleSide,
+});
+const LINE = new THREE.LineBasicMaterial({ color: INK });
+const HIDDEN = new THREE.LineBasicMaterial({ color: INK, transparent: true, opacity: 0.08, depthTest: false });
+
+const root = new THREE.Group();
+function add(geo, { p = [0, 0, 0], r = [0, 0, 0], t = 20, to = root } = {}) {
+  const m = new THREE.Mesh(geo, FILL);
+  m.position.set(...p);
+  m.rotation.set(...r);
+  const e = new THREE.EdgesGeometry(geo, t);
+  m.add(new THREE.LineSegments(e, LINE));
+  const h = new THREE.LineSegments(e, HIDDEN);
+  h.renderOrder = 10;
+  m.add(h);
+  to.add(m);
+  return m;
+}
+const group = (p = [0, 0, 0], r = [0, 0, 0], to = root) => { const g = new THREE.Group(); g.position.set(...p); g.rotation.set(...r); to.add(g); return g; };
+const circle = (r, x = 0, y = 0) => { const p = new THREE.Path(); p.absarc(x, y, r, 0, TAU, true); return p; };
+const disc = (r, hole = 0) => { const s = new THREE.Shape(); s.absarc(0, 0, r, 0, TAU, false); if (hole) s.holes.push(circle(hole)); return s; };
+const extrude = (shape, depth, o = {}) => new THREE.ExtrudeGeometry(shape, { depth, bevelEnabled: false, curveSegments: 64, ...o });
+const tube = (pts, r, seg = 48, rad = 12) => new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts.map((v) => new THREE.Vector3(...v))), seg, r, rad, false);
+const cyl = (r, h, s = 48, open = false, r2 = r) => new THREE.CylinderGeometry(r2, r, h, s, 1, open);
+const lathe = (pts, s = 64) => new THREE.LatheGeometry(pts.map(([x, y]) => new THREE.Vector2(x, y)), s);
+const X = [0, 0, Math.PI / 2]; // turn a y-axis cylinder to lie along x
+const Z = [Math.PI / 2, 0, 0]; // ... along z
+
+// ---------------------------------------------------------------- brake rotor (grooved, vented, 4x100)
+function rotor() {
+  add(extrude(disc(1, 0.56), 0.07), { p: [0, 0, 0] });
+  add(extrude(disc(1, 0.56), 0.07), { p: [0, 0, 0.17] });
+  for (let k = 0; k < 40; k++) {
+    const a = (k / 40) * TAU;
+    add(new THREE.BoxGeometry(0.4, 0.02, 0.1), { p: [Math.cos(a) * 0.78, Math.sin(a) * 0.78, 0.12], r: [0, 0, a + 0.3] });
+  }
+  for (let k = 0; k < 12; k++) { // curved grooves on the friction face
+    const a = (k / 12) * TAU;
+    const s = new THREE.Shape();
+    s.absarc(0, 0, 0.96, a, a + 0.42, false); s.absarc(0, 0, 0.93, a + 0.42, a, true);
+    const g = extrude(s, 0.012, { curveSegments: 24 }); g.rotateZ(-0.35 * (k % 2 ? 1 : 1));
+    add(g, { p: [0, 0, 0.24] });
+    const s2 = new THREE.Shape();
+    s2.absarc(0, 0, 0.78, a + 0.2, a + 0.55, false); s2.absarc(0, 0, 0.75, a + 0.55, a + 0.2, true);
+    add(extrude(s2, 0.012, { curveSegments: 24 }), { p: [0, 0, 0.24] });
+  }
+  add(cyl(0.5, 0.34, 72, true), { p: [0, 0, 0.41], r: Z, t: 30 });
+  const hat = disc(0.5, 0.2);
+  for (let k = 0; k < 4; k++) { const a = (k / 4) * TAU + Math.PI / 4; hat.holes.push(circle(0.055, Math.cos(a) * 0.33, Math.sin(a) * 0.33)); }
+  add(extrude(hat, 0.05, { bevelEnabled: true, bevelSize: 0.015, bevelThickness: 0.015, bevelSegments: 2 }), { p: [0, 0, 0.58] });
+  add(extrude(disc(0.6, 0.49), 0.05), { p: [0, 0, 0.22] });
+  root.rotation.set(-0.55, 0.62, 0.05);
+}
+
+// ---------------------------------------------------------------- engine: SKYACTIV-G 2.0 inline four
+function engine() {
+  const L = 1.5;
+  const b = new THREE.Shape();
+  b.moveTo(-0.3, 0); b.lineTo(0.3, 0); b.lineTo(0.36, 0.2); b.lineTo(0.33, 0.75); b.lineTo(-0.33, 0.75); b.lineTo(-0.36, 0.2); b.closePath();
+  const block = extrude(b, L); block.rotateY(Math.PI / 2); block.translate(-L / 2, 0, 0);
+  add(block);
+  for (const x of [-0.45, -0.15, 0.15, 0.45]) add(new THREE.BoxGeometry(0.04, 0.5, 0.05), { p: [x, 0.42, 0.35] });
+  add(new THREE.BoxGeometry(L - 0.04, 0.24, 0.64), { p: [0, 0.87, 0] });
+  add(new RoundedBoxGeometry(L - 0.1, 0.16, 0.54, 4, 0.06), { p: [0, 1.06, 0], t: 35 });
+  for (const x of [-0.54, -0.18, 0.18, 0.54]) {
+    add(cyl(0.05, 0.1, 24), { p: [x, 1.18, -0.02] });
+    add(new THREE.BoxGeometry(0.1, 0.05, 0.16), { p: [x, 1.24, 0.02] });
+  }
+  add(cyl(0.07, 0.05, 32), { p: [0.4, 1.16, 0.18] });
+  add(cyl(0.11, 1.28, 40), { p: [0, 0.96, 0.72], r: X, t: 30 });
+  for (const x of [-0.54, -0.18, 0.18, 0.54]) add(tube([[x, 0.82, 0.32], [x, 0.96, 0.44], [x, 1.1, 0.58], [x, 1.02, 0.7]], 0.045), { t: 45 });
+  add(cyl(0.085, 0.18, 32), { p: [-0.73, 0.96, 0.72], r: X, t: 30 });
+  add(cyl(0.11, 0.03, 32), { p: [-0.83, 0.96, 0.72], r: X, t: 30 });
+  for (const x of [-0.54, -0.18, 0.18, 0.54]) add(tube([[x, 0.82, -0.32], [x, 0.78, -0.5], [x * 0.55, 0.52, -0.6], [0.05, 0.3, -0.6]], 0.042), { t: 45 });
+  add(tube([[0.05, 0.3, -0.6], [0.05, 0.05, -0.6], [-0.3, -0.15, -0.6], [-0.85, -0.18, -0.6]], 0.07), { t: 45 });
+  const pan = new THREE.Shape();
+  pan.moveTo(-0.3, 0); pan.lineTo(0.3, 0); pan.lineTo(0.26, -0.16); pan.lineTo(-0.26, -0.16); pan.closePath();
+  const panGeo = extrude(pan, L - 0.1); panGeo.rotateY(Math.PI / 2); panGeo.translate(-(L - 0.1) / 2, 0, 0);
+  add(panGeo);
+  add(new THREE.BoxGeometry(0.6, 0.14, 0.44), { p: [-0.35, -0.23, 0] });
+  add(new THREE.BoxGeometry(0.06, 0.95, 0.56), { p: [0.78, 0.45, 0] });
+  add(cyl(0.17, 0.06, 48), { p: [0.84, 0.14, 0], r: X, t: 30 });
+  add(cyl(0.14, 0.05, 48), { p: [0.89, 0.14, 0], r: X, t: 30 });
+  add(cyl(0.1, 0.05, 40), { p: [0.84, 0.6, 0.12], r: X, t: 30 });
+  add(cyl(0.12, 0.24, 40), { p: [0.72, 0.52, -0.46], r: X, t: 30 });
+  add(cyl(0.06, 0.05, 32), { p: [0.86, 0.52, -0.46], r: X, t: 30 });
+  add(cyl(0.44, 0.05, 72), { p: [-0.8, 0.3, 0], r: X, t: 30 });
+  add(cyl(0.075, 0.2, 40), { p: [-0.05, 0.28, 0.46], r: [Math.PI / 2 - 0.3, 0, 0], t: 30 });
+  root.rotation.set(0.42, -0.72, 0);
+}
+
+// ---------------------------------------------------------------- 6-speed manual transmission (with oil pump + cooler lines)
+function transmission() {
+  // bellhousing (flared, open), ribbed
+  add(cyl(0.34, 0.36, 64, true, 0.56), { p: [0.6, 0, 0], r: [0, 0, -Math.PI / 2], t: 30 });
+  add(extrude(disc(0.6, 0.5), 0.04), { p: [0.8, 0, 0], r: [0, Math.PI / 2, 0] });
+  // main case
+  add(new RoundedBoxGeometry(0.72, 0.56, 0.5, 4, 0.08), { p: [0.06, -0.04, 0], t: 35 });
+  for (const x of [-0.14, 0.06, 0.26]) add(new THREE.BoxGeometry(0.03, 0.5, 0.54), { p: [x, -0.04, 0] });
+  // tail housing + output flange
+  add(cyl(0.2, 0.62, 48, false, 0.13), { p: [-0.6, 0.02, 0], r: [0, 0, Math.PI / 2], t: 30 });
+  add(cyl(0.1, 0.1, 40), { p: [-0.96, 0.02, 0], r: X, t: 30 });
+  const fl = disc(0.14, 0.04); for (let k = 0; k < 4; k++) { const a = (k / 4) * TAU; fl.holes.push(circle(0.018, Math.cos(a) * 0.1, Math.sin(a) * 0.1)); }
+  add(extrude(fl, 0.03), { p: [-1.04, 0.02, 0], r: [0, Math.PI / 2, 0] });
+  // shifter tower + lever + boot ring
+  add(new RoundedBoxGeometry(0.3, 0.2, 0.22, 3, 0.04), { p: [-0.34, 0.3, 0], t: 35 });
+  add(cyl(0.02, 0.36, 16), { p: [-0.34, 0.56, 0], t: 30 });
+  add(new THREE.SphereGeometry(0.05, 20, 14), { p: [-0.34, 0.76, 0], t: 40 });
+  add(cyl(0.08, 0.04, 32, false, 0.05), { p: [-0.34, 0.42, 0], t: 30 });
+  // oil pump + cooler lines
+  add(cyl(0.07, 0.16, 32), { p: [-0.1, -0.12, 0.33], r: Z, t: 30 });
+  add(tube([[-0.1, -0.12, 0.42], [-0.2, -0.14, 0.46], [-0.5, -0.12, 0.3], [-0.8, -0.1, 0.22]], 0.022), { t: 45 });
+  add(tube([[-0.02, -0.2, 0.36], [-0.2, -0.24, 0.4], [-0.5, -0.2, 0.26], [-0.8, -0.16, 0.18]], 0.022), { t: 45 });
+  // drain / fill plugs, mount ears
+  add(cyl(0.035, 0.05, 6), { p: [0.1, -0.34, 0.1], t: 30 });
+  add(cyl(0.035, 0.05, 6), { p: [0.2, 0.0, -0.27], r: Z, t: 30 });
+  root.rotation.set(0.35, 0.65, 0);
+}
+
+// ---------------------------------------------------------------- limited-slip differential (finned cover, pump, cooler)
+function differential() {
+  add(new THREE.SphereGeometry(0.36, 40, 28).scale(1, 0.85, 0.9), { t: 40 });
+  // finned rear cover
+  add(extrude(disc(0.34), 0.05), { p: [0, 0, -0.34] });
+  for (let k = -3; k <= 3; k++) add(new THREE.BoxGeometry(0.03, 0.5 - Math.abs(k) * 0.05, 0.08), { p: [k * 0.08, 0, -0.39] });
+  // pinion nose + input flange
+  add(cyl(0.16, 0.34, 40, false, 0.12), { p: [0, -0.02, 0.44], r: Z, t: 30 });
+  const fl = disc(0.15, 0.04); for (let k = 0; k < 4; k++) { const a = (k / 4) * TAU; fl.holes.push(circle(0.02, Math.cos(a) * 0.1, Math.sin(a) * 0.1)); }
+  add(extrude(fl, 0.04), { p: [0, -0.02, 0.62] });
+  // axle outputs both sides with flanges
+  for (const s of [1, -1]) {
+    add(cyl(0.12, 0.2, 40), { p: [s * 0.42, 0, 0], r: X, t: 30 });
+    const of = disc(0.14, 0.035); for (let k = 0; k < 6; k++) { const a = (k / 6) * TAU; of.holes.push(circle(0.016, Math.cos(a) * 0.1, Math.sin(a) * 0.1)); }
+    add(extrude(of, 0.03), { p: [s * 0.53 + (s < 0 ? -0.03 : 0), 0, 0], r: [0, Math.PI / 2, 0] });
+  }
+  // mount ears on top
+  for (const s of [1, -1]) {
+    add(new THREE.BoxGeometry(0.1, 0.18, 0.14), { p: [s * 0.24, 0.32, -0.05] });
+    add(cyl(0.05, 0.16, 24, true), { p: [s * 0.24, 0.42, -0.05], r: Z, t: 30 });
+  }
+  // pump + lines
+  add(cyl(0.06, 0.16, 32), { p: [-0.22, -0.3, 0.18], r: X, t: 30 });
+  add(tube([[-0.3, -0.3, 0.18], [-0.36, -0.3, 0.3], [-0.3, -0.22, 0.42]], 0.02), { t: 45 });
+  add(tube([[-0.14, -0.3, 0.18], [-0.06, -0.32, 0.3], [-0.12, -0.24, 0.42]], 0.02), { t: 45 });
+  root.rotation.set(0.45, -0.7, 0);
+}
+
+// ---------------------------------------------------------------- air filter: intake box with pleated panel lifted out
+function airFilter() {
+  add(new RoundedBoxGeometry(1.1, 0.34, 0.7, 4, 0.06), { p: [0, 0, 0], t: 35 });           // lower box
+  add(new RoundedBoxGeometry(1.1, 0.14, 0.7, 4, 0.05), { p: [0, 0.62, 0], t: 35 });        // lid, lifted
+  for (const x of [-0.5, 0.5]) for (const z of [-0.3, 0.3]) add(new THREE.BoxGeometry(0.06, 0.06, 0.06), { p: [x, 0.2, z] }); // clips
+  add(tube([[0.5, 0.0, 0.35], [0.7, 0.0, 0.55], [0.95, 0.02, 0.62]], 0.1), { t: 45 });     // snorkel
+  add(cyl(0.12, 0.05, 40), { p: [0.99, 0.02, 0.63], r: X, t: 30 });
+  add(tube([[-0.5, 0.64, 0.0], [-0.8, 0.66, 0.0], [-1.0, 0.8, 0.0]], 0.11), { t: 45 });   // outlet duct from lid
+  // pleated panel filter floating between box and lid
+  const g = group([0, 0.32, 0]);
+  add(new THREE.BoxGeometry(0.92, 0.06, 0.56), { to: g, t: 20 });
+  const pl = new THREE.Shape(); const n = 22, w = 0.84, hgt = 0.14;
+  pl.moveTo(-w / 2, 0);
+  for (let i = 0; i < n; i++) { pl.lineTo(-w / 2 + (i + 0.5) * (w / n), hgt); pl.lineTo(-w / 2 + (i + 1) * (w / n), 0); }
+  pl.closePath();
+  const pg = extrude(pl, 0.5); pg.translate(0, 0.03, -0.25);
+  add(pg, { to: g, t: 20 });
+  root.rotation.set(0.5, -0.55, 0);
+}
+
+// ---------------------------------------------------------------- brake pads: a pair, backing plates + friction blocks
+function pads() {
+  const plate = () => {
+    const s = new THREE.Shape();
+    s.moveTo(-0.62, -0.12); s.quadraticCurveTo(0, -0.3, 0.62, -0.12); s.lineTo(0.66, 0.16); s.lineTo(0.5, 0.2);
+    s.quadraticCurveTo(0, 0.34, -0.5, 0.2); s.lineTo(-0.66, 0.16); s.closePath();
+    s.holes.push(circle(0.035, -0.56, 0.05), circle(0.035, 0.56, 0.05));
+    return s;
+  };
+  const block = () => {
+    const s = new THREE.Shape();
+    s.moveTo(-0.5, -0.1); s.quadraticCurveTo(0, -0.26, 0.5, -0.1); s.lineTo(0.48, 0.14);
+    s.quadraticCurveTo(0, 0.28, -0.48, 0.14); s.closePath();
+    return s;
+  };
+  for (const [z, flip] of [[0, 1], [0.5, -1]]) {
+    const g = group([0, 0, z], [0, flip < 0 ? Math.PI : 0, 0]);
+    add(extrude(plate(), 0.05), { to: g });
+    const fb = extrude(block(), 0.13, { bevelEnabled: true, bevelSize: 0.02, bevelThickness: 0.02, bevelSegments: 1 });
+    add(fb, { p: [0, 0, 0.05], to: g });
+    add(new THREE.BoxGeometry(0.02, 0.36, 0.14), { p: [0, 0.02, 0.13], to: g }); // center slot
+    add(new THREE.BoxGeometry(0.16, 0.04, 0.03), { p: [0.3, 0.22, 0.04], to: g });  // wear sensor tab
+  }
+  root.rotation.set(0.3, 0.8, 0.12);
+}
+
+// ---------------------------------------------------------------- slick on a 6-spoke forged 17" wheel, 4 lugs
+function tires() {
+  const R = 1, w = 0.62; // tire outer radius, width
+  const prof = [];
+  for (let i = 0; i <= 24; i++) { const a = -Math.PI / 2 + (i / 24) * Math.PI; prof.push([0.72 + Math.cos(a) * 0.06 + 0.22 * Math.cos(a) ** 0.35 * (Math.cos(a) > 0 ? 1 : 0), Math.sin(a) * w / 2]); }
+  const tire = lathe([[0.72, -w / 2], [0.9, -w / 2 - 0.02], [0.98, -w / 2 + 0.03], [R, -w / 2 + 0.1], [R, w / 2 - 0.1], [0.98, w / 2 - 0.03], [0.9, w / 2 + 0.02], [0.72, w / 2]], 96);
+  add(tire, { r: Z, t: 30 });
+  // rim barrel + lips
+  add(cyl(0.72, w + 0.04, 96, true), { r: Z, t: 30 });
+  for (const z of [w / 2 + 0.02, -w / 2 - 0.02]) add(extrude(disc(0.76, 0.7), 0.03), { p: [0, 0, z - 0.015] });
+  // face: 6 spokes, hub, 4 lugs, center cap
+  const face = group([0, 0, 0.12]);
+  for (let k = 0; k < 6; k++) {
+    const a = (k / 6) * TAU;
+    const s = new THREE.Shape(); s.moveTo(0.2, -0.06); s.lineTo(0.7, -0.12); s.lineTo(0.7, 0.12); s.lineTo(0.2, 0.06); s.closePath();
+    const g = extrude(s, 0.08, { bevelEnabled: true, bevelSize: 0.015, bevelThickness: 0.015, bevelSegments: 1 }); g.rotateZ(a);
+    add(g, { to: face });
+  }
+  add(extrude(disc(0.24, 0.07), 0.12), { to: face });
+  for (let k = 0; k < 4; k++) { const a = (k / 4) * TAU + Math.PI / 4; add(cyl(0.035, 0.08, 6), { p: [Math.cos(a) * 0.15, Math.sin(a) * 0.15, 0.16], r: Z, to: face, t: 30 }); }
+  add(cyl(0.065, 0.05, 32), { p: [0, 0, 0.15], r: Z, to: face, t: 30 });
+  root.rotation.set(-0.25, 0.65, 0);
+}
+
+// ---------------------------------------------------------------- clutch: pressure plate + disc, pulled apart
+function clutch() {
+  // pressure plate cover with diaphragm fingers
+  const cover = group([0, 0, 0.35]);
+  add(cyl(0.9, 0.12, 72, true), { r: Z, to: cover, t: 30 });
+  const face = disc(0.95, 0.42); for (let k = 0; k < 6; k++) { const a = (k / 6) * TAU; face.holes.push(circle(0.04, Math.cos(a) * 0.86, Math.sin(a) * 0.86)); }
+  add(extrude(face, 0.04), { p: [0, 0, 0.06], to: cover });
+  for (let k = 0; k < 18; k++) {
+    const a = (k / 18) * TAU;
+    const s = new THREE.Shape(); s.moveTo(0.14, -0.025); s.lineTo(0.44, -0.06); s.lineTo(0.44, 0.06); s.lineTo(0.14, 0.025); s.closePath();
+    const g = extrude(s, 0.02); g.rotateZ(a);
+    add(g, { p: [0, 0, 0.08], to: cover });
+  }
+  // clutch disc: friction ring with rivets, hub with torsion springs
+  const d = group([0, 0, -0.35]);
+  const ring = disc(0.86, 0.5); for (let k = 0; k < 16; k++) { const a = (k / 16) * TAU; ring.holes.push(circle(0.022, Math.cos(a) * 0.68, Math.sin(a) * 0.68)); }
+  add(extrude(ring, 0.06), { to: d });
+  add(extrude(disc(0.52, 0.12), 0.02), { p: [0, 0, 0.02], to: d });
+  for (let k = 0; k < 6; k++) { const a = (k / 6) * TAU; add(cyl(0.045, 0.2, 16), { p: [Math.cos(a) * 0.3, Math.sin(a) * 0.3, 0.05], r: [0, 0, a], to: d, t: 30 }); }
+  add(cyl(0.12, 0.16, 36), { p: [0, 0, 0.06], r: Z, to: d, t: 30 });
+  for (let k = 0; k < 10; k++) { const a = (k / 10) * TAU; add(new THREE.BoxGeometry(0.02, 0.03, 0.16), { p: [Math.cos(a) * 0.06, Math.sin(a) * 0.06, 0.06], r: [0, 0, a], to: d }); }
+  root.rotation.set(-0.35, 0.75, 0.05);
+}
+
+// ---------------------------------------------------------------- DSSV two-way adjustable coilover
+function damper() {
+  add(cyl(0.11, 1.0, 40), { p: [0, -0.35, 0], t: 30 });                  // body
+  add(cyl(0.035, 0.55, 20), { p: [0, 0.42, 0], t: 30 });                 // shaft
+  // threaded collar + lower perch
+  add(cyl(0.2, 0.05, 48), { p: [0, -0.12, 0], t: 30 });
+  add(cyl(0.16, 0.08, 48), { p: [0, -0.18, 0], t: 30 });
+  // spring (helix)
+  const pts = []; const turns = 5.5, r = 0.2, y0 = -0.08, y1 = 0.6;
+  for (let i = 0; i <= 240; i++) { const t = i / 240; pts.push([Math.cos(t * turns * TAU) * r, y0 + t * (y1 - y0), Math.sin(t * turns * TAU) * r]); }
+  add(tube(pts, 0.03, 360, 10), { t: 45 });
+  // top perch + mount plate with studs
+  add(cyl(0.22, 0.04, 48), { p: [0, 0.64, 0], t: 30 });
+  add(new THREE.BoxGeometry(0.44, 0.05, 0.3), { p: [0, 0.76, 0] });
+  for (const x of [-0.15, 0.15]) add(cyl(0.02, 0.14, 12), { p: [x, 0.84, 0], t: 30 });
+  // DSSV valve block on the side with two adjuster knobs
+  add(new RoundedBoxGeometry(0.2, 0.36, 0.18, 3, 0.03), { p: [0.2, -0.5, 0], t: 35 });
+  for (const y of [-0.4, -0.6]) add(cyl(0.05, 0.05, 24, false), { p: [0.33, y, 0], r: [0, 0, Math.PI / 2], t: 30 });
+  // lower eyelet
+  add(cyl(0.08, 0.12, 32, true), { p: [0, -0.9, 0], r: Z, t: 30 });
+  add(new THREE.BoxGeometry(0.1, 0.12, 0.1), { p: [0, -0.82, 0] });
+  root.rotation.set(0.15, 0.55, 0.08);
+}
+
+// ---------------------------------------------------------------- hub + wheel bearing: flange, extended studs, 3-ear housing
+function bearing() {
+  const fl = disc(0.62, 0.2); for (let k = 0; k < 4; k++) { const a = (k / 4) * TAU + Math.PI / 4; fl.holes.push(circle(0.04, Math.cos(a) * 0.4, Math.sin(a) * 0.4)); }
+  add(extrude(fl, 0.08), { p: [0, 0, 0.3] });
+  add(cyl(0.2, 0.14, 48, false, 0.18), { p: [0, 0, 0.44], r: Z, t: 30 });  // pilot
+  for (let k = 0; k < 4; k++) { const a = (k / 4) * TAU + Math.PI / 4; add(cyl(0.03, 0.5, 16), { p: [Math.cos(a) * 0.4, Math.sin(a) * 0.4, 0.6], r: Z, t: 30 }); }
+  // bearing housing with 3 bolt ears
+  const hs = new THREE.Shape(); const n = 3;
+  for (let i = 0; i <= 90; i++) {
+    const a = (i / 90) * TAU; const ear = Math.max(0, Math.cos(n * a)); const rr = 0.4 + ear ** 6 * 0.2;
+    i ? hs.lineTo(Math.cos(a) * rr, Math.sin(a) * rr) : hs.moveTo(rr, 0);
+  }
+  hs.holes.push(circle(0.2)); for (let k = 0; k < 3; k++) { const a = (k / 3) * TAU; hs.holes.push(circle(0.04, Math.cos(a) * 0.52, Math.sin(a) * 0.52)); }
+  add(extrude(hs, 0.08), { p: [0, 0, 0.1] });
+  add(cyl(0.36, 0.3, 64, false, 0.34), { p: [0, 0, -0.05], r: Z, t: 30 });    // bearing body
+  add(extrude(disc(0.22, 0.12), 0.04), { p: [0, 0, -0.22] });                // inner race
+  add(extrude(disc(0.31, 0.25), 0.02), { p: [0, 0, -0.21] });                // seal
+  root.rotation.set(-0.4, 0.7, 0);
+}
+
+// ---------------------------------------------------------------- lower control arm: A-arm, two bushings, ball joint
+function controlArm() {
+  const s = new THREE.Shape();
+  s.moveTo(-0.9, -0.1); s.lineTo(-0.7, -0.14); s.quadraticCurveTo(0.1, -0.3, 0.72, -0.07); s.lineTo(0.72, 0.07);
+  s.quadraticCurveTo(0.2, 0.1, -0.1, 0.62); s.lineTo(-0.28, 0.62); s.quadraticCurveTo(-0.55, 0.2, -0.9, 0.1); s.closePath();
+  const hole = new THREE.Path(); hole.moveTo(-0.55, 0.02); hole.quadraticCurveTo(0.0, -0.12, 0.4, 0.0); hole.quadraticCurveTo(0.0, 0.08, -0.18, 0.4); hole.quadraticCurveTo(-0.35, 0.12, -0.55, 0.02);
+  s.holes.push(hole);
+  add(extrude(s, 0.09, { bevelEnabled: true, bevelSize: 0.02, bevelThickness: 0.02, bevelSegments: 2 }), { t: 30 });
+  // bushings at the two inner pivots (axis along the pivot line)
+  for (const [x, y] of [[-0.9, 0], [-0.19, 0.64]]) {
+    add(cyl(0.11, 0.2, 40, false), { p: [x, y, 0.045], r: [0, 0, Math.PI / 2 - 0.9], t: 30 });
+    add(cyl(0.045, 0.24, 24, false), { p: [x, y, 0.045], r: [0, 0, Math.PI / 2 - 0.9], t: 30 });
+  }
+  // ball joint at the outer end
+  add(cyl(0.12, 0.1, 40), { p: [0.76, 0, 0.045], r: Z, t: 30 });
+  add(new THREE.SphereGeometry(0.08, 24, 16), { p: [0.76, 0, 0.14], t: 40 });
+  add(cyl(0.03, 0.18, 20, false, 0.05), { p: [0.76, 0, 0.26], r: Z, t: 30 });
+  root.rotation.set(-0.7, 0.35, 0.1);
+}
+
+// ---------------------------------------------------------------- PPF: aluminum beam tying transmission to diff
+function ppf() {
+  const L = 2.2;
+  const web = new THREE.Shape(); web.moveTo(-L / 2, -0.12); web.lineTo(L / 2, -0.07); web.lineTo(L / 2, 0.07); web.lineTo(-L / 2, 0.12); web.closePath();
+  for (let i = 0; i < 7; i++) { const x = -L / 2 + 0.3 + i * 0.27; web.holes.push(circle(0.06 - i * 0.003, x, 0)); }
+  add(extrude(web, 0.03), { p: [0, 0, -0.015] });
+  for (const s of [1, -1]) { // flanges
+    const f = new THREE.Shape(); f.moveTo(-L / 2, 0); f.lineTo(L / 2, 0); f.lineTo(L / 2, 0.02); f.lineTo(-L / 2, 0.02); f.closePath();
+    const g = new THREE.BoxGeometry(L, 0.025, 0.16);
+    const pos = g.attributes.position; // taper flange height with the web
+    for (let i = 0; i < pos.count; i++) pos.setY(i, pos.getY(i) + s * (0.12 - (pos.getX(i) + L / 2) / L * 0.05));
+    g.computeVertexNormals();
+    add(g, { t: 20 });
+  }
+  // front: bolt plate to transmission tail (4 bolts); rear: bushing mount to diff
+  const plate = new THREE.Shape(); plate.moveTo(-0.22, -0.2); plate.lineTo(0.22, -0.2); plate.lineTo(0.22, 0.2); plate.lineTo(-0.22, 0.2); plate.closePath();
+  for (const [x, y] of [[-0.14, -0.12], [0.14, -0.12], [-0.14, 0.12], [0.14, 0.12]]) plate.holes.push(circle(0.03, x, y));
+  add(extrude(plate, 0.04), { p: [-L / 2 - 0.02, 0, 0], r: [0, Math.PI / 2, 0] });
+  add(cyl(0.12, 0.18, 40, false), { p: [L / 2 + 0.08, 0, 0], r: Z, t: 30 });
+  add(cyl(0.05, 0.22, 24, false), { p: [L / 2 + 0.08, 0, 0], r: Z, t: 30 });
+  root.rotation.set(0.45, 0.5, 0.05);
+}
+
+// ---------------------------------------------------------------- CV axle: shaft, two boots, two joints, splined stubs
+function axle() {
+  const L = 2.0;
+  add(cyl(0.05, L - 0.6, 24), { r: X, t: 30 });
+  const boot = lathe(Array.from({ length: 41 }, (_, i) => { const t = i / 40; return [0.06 + t * 0.14 + Math.sin(t * Math.PI * 6) ** 2 * 0.035, t * 0.36]; }), 48);
+  // outer joint (bell) + boot
+  add(boot.clone(), { p: [L / 2 - 0.55, 0, 0], r: [0, 0, -Math.PI / 2], t: 35 });
+  add(lathe([[0.2, 0], [0.24, 0.06], [0.24, 0.2], [0.18, 0.3], [0.08, 0.34]], 48), { p: [L / 2 - 0.2, 0, 0], r: [0, 0, -Math.PI / 2], t: 35 });
+  add(cyl(0.06, 0.24, 24), { p: [L / 2 + 0.25, 0, 0], r: X, t: 30 });
+  for (let k = 0; k < 10; k++) { const a = (k / 10) * TAU; add(new THREE.BoxGeometry(0.2, 0.012, 0.012), { p: [L / 2 + 0.27, Math.cos(a) * 0.06, Math.sin(a) * 0.06] }); }
+  // inner joint (tripod cup) + boot
+  add(boot.clone(), { p: [-L / 2 + 0.55, 0, 0], r: [0, 0, Math.PI / 2], t: 35 });
+  add(cyl(0.22, 0.34, 48), { p: [-L / 2 + 0.03, 0, 0], r: X, t: 30 });
+  add(cyl(0.07, 0.2, 24), { p: [-L / 2 - 0.25, 0, 0], r: X, t: 30 });
+  root.rotation.set(0.35, 0.45, 0.25);
+}
+
+({ rotor, engine, transmission, differential, airFilter, pads, tires, clutch, damper, bearing, controlArm, ppf, axle })[PART]();
+
+// ---- camera fits the part
+const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+renderer.setSize(SIZE, SIZE);
+renderer.setPixelRatio(1);
+document.body.appendChild(renderer.domElement);
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x000000);
+scene.add(root);
+root.updateMatrixWorld(true);
+const sphere = new THREE.Box3().setFromObject(root).getBoundingSphere(new THREE.Sphere());
+root.position.sub(sphere.center);
+const camera = new THREE.PerspectiveCamera(28, 1, 0.1, 100);
+camera.position.set(0, 0, (sphere.radius / Math.sin(THREE.MathUtils.degToRad(14))) * ZOOM);
+
+const composer = new EffectComposer(renderer);
+composer.addPass(new RenderPass(scene, camera));
+composer.addPass(new UnrealBloomPass(new THREE.Vector2(SIZE, SIZE), 0.35, 0.3, 0.35));
+composer.addPass(new OutputPass());
+composer.render();
+window.done = true;
+</script>
+</body>
+</html>

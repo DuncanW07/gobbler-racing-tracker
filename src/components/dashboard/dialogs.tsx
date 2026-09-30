@@ -74,7 +74,7 @@ export function Modal({
 // Good / Watch / Replace. Click the selected one again to clear it.
 const RESULT_TONES: Record<CheckResult, string> = {
   good: "border-emerald-400/70 bg-emerald-400/15 text-emerald-200",
-  watch: "border-amber-400/70 bg-amber-400/15 text-amber-200",
+  watch: "border-orange-400/70 bg-orange-400/15 text-orange-200",
   replace: "border-red-500/70 bg-red-500/15 text-red-200",
 };
 export function ResultPicker({ value, onChange, label }: { value: CheckResult | null; onChange: (v: CheckResult | null) => void; label: string }) {
@@ -142,11 +142,11 @@ const today = () => {
 
 // ---------------------------------------------------------------- log session
 
-export function LogSessionDialog({ onClose, onSaved }: { onClose: () => void; onSaved: (s: TrackerState) => void }) {
+export function LogSessionDialog({ type, onClose, onSaved }: { type: SessionType; onClose: () => void; onSaved: (s: TrackerState) => void }) {
   const { pending, error, save } = useSave(onSaved);
   const [name, setName] = useState("");
   const [date, setDate] = useState(today);
-  const [type, setType] = useState<SessionType>("race_weekend");
+  const race = type === "race_weekend";
   const [hours, setHours] = useState("");
   const [notes, setNotes] = useState("");
   const first = useRef<HTMLInputElement>(null);
@@ -154,16 +154,16 @@ export function LogSessionDialog({ onClose, onSaved }: { onClose: () => void; on
 
   return (
     <Modal
-      eyebrow="Log session"
+      eyebrow={race ? "Log race weekend" : "Log test day"}
       title="Time on track"
-      subtitle="Hours are added to every part tracked by engine hours, since its last change."
+      subtitle={race ? "Adds the hours to every part, and flags the every-weekend parts for the checklist next." : "Adds the hours to every part."}
       onClose={onClose}
     >
       <form onSubmit={(e) => { e.preventDefault(); save(() => logSession({ name, date, type, hours, notes })); }}>
         <div className="space-y-4">
           <div>
             <label htmlFor="s-name" className={labelClass}>Event / track</label>
-            <input id="s-name" ref={first} required maxLength={80} value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. VIR, CRS Round 3" className={fieldClass} />
+            <input id="s-name" ref={first} required maxLength={80} value={name} onChange={(e) => setName(e.target.value)} placeholder={race ? "e.g. Miami, CRS Round 3" : "e.g. VIR test day"} className={fieldClass} />
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
@@ -171,23 +171,16 @@ export function LogSessionDialog({ onClose, onSaved }: { onClose: () => void; on
               <input id="s-date" type="date" required value={date} onChange={(e) => setDate(e.target.value)} className={fieldClass} />
             </div>
             <div>
-              <label htmlFor="s-type" className={labelClass}>Type</label>
-              <select id="s-type" value={type} onChange={(e) => setType(e.target.value as SessionType)} className={fieldClass}>
-                <option value="race_weekend">Race weekend</option>
-                <option value="test_day">Test day</option>
-              </select>
+              <label htmlFor="s-hours" className={labelClass}>Hours on track</label>
+              <input id="s-hours" type="number" inputMode="decimal" step="0.1" min="0.1" max="100" required value={hours} onChange={(e) => setHours(e.target.value)} placeholder={race ? "e.g. 5" : "e.g. 2"} className={fieldClass} />
             </div>
-          </div>
-          <div>
-            <label htmlFor="s-hours" className={labelClass}>Time on track (hours)</label>
-            <input id="s-hours" type="number" inputMode="decimal" step="0.1" min="0" max="100" required value={hours} onChange={(e) => setHours(e.target.value)} placeholder="e.g. 2.5" className={fieldClass} />
           </div>
           <div>
             <label htmlFor="s-notes" className={labelClass}>Notes (optional)</label>
             <textarea id="s-notes" rows={2} maxLength={1000} value={notes} onChange={(e) => setNotes(e.target.value)} className={fieldClass} />
           </div>
         </div>
-        <Footer pending={pending} error={error} label="Log session" onCancel={onClose} />
+        <Footer pending={pending} error={error} label={race ? "Log race weekend" : "Log test day"} onCancel={onClose} />
       </form>
     </Modal>
   );
@@ -269,7 +262,7 @@ export function EntryDialog({
             <div>
               <p className={labelClass}>Result (optional)</p>
               <ResultPicker value={result} onChange={setResult} label="Result" />
-              <p className="mt-1.5 text-xs text-zinc-500">Watch turns the part amber, Replace turns it red, until it&apos;s changed.</p>
+              <p className="mt-1.5 text-xs text-zinc-500">Watch turns the part orange, Replace turns it red, until it&apos;s changed.</p>
             </div>
           )}
           {action !== "checked" && (
@@ -310,7 +303,7 @@ export function LimitDialog({ part, onClose, onSaved }: { part: Part; onClose: (
   const [newValue, setNewValue] = useState(part.newValue != null ? String(part.newValue) : "");
   const [startValue, setStartValue] = useState("");
   const [inspectEvery, setInspectEvery] = useState(part.inspectEvery != null ? String(part.inspectEvery) : "");
-  const [countTestDays, setCountTestDays] = useState(part.countTestDays);
+  const [dueAfterRace, setDueAfterRace] = useState(part.dueAfterRace);
   const measured = part.tracking === "measured";
   const counted = part.tracking === "hours" || part.tracking === "weekends";
   const condition = part.tracking === "condition";
@@ -322,10 +315,10 @@ export function LimitDialog({ part, onClose, onSaved }: { part: Part; onClose: (
       title={part.name}
       subtitle={
         condition
-          ? "How often it gets inspected. It turns amber when an inspection is due."
+          ? "How often it gets inspected. It turns orange when an inspection is due."
           : measured
-          ? "Enter the thickness when new and the minimum allowed. The part turns amber in the last 20% and red at the minimum."
-          : `Change interval in ${unit}. The part turns amber at 80% and red at 100%.`
+          ? "Enter the thickness when new and the minimum allowed. The part turns orange in the last 20% and red at the minimum."
+          : `Change interval in ${unit}. The part turns orange at 80% and red at 100%.`
       }
       onClose={onClose}
     >
@@ -336,7 +329,7 @@ export function LimitDialog({ part, onClose, onSaved }: { part: Part; onClose: (
               newValue: measured ? newValue : undefined,
               startValue: counted ? startValue : undefined,
               inspectEvery,
-              countTestDays: part.tracking === "weekends" && countTestDays,
+              dueAfterRace: counted ? dueAfterRace : undefined,
             }),
           ); }}>
         {!condition && <div className={measured ? "grid grid-cols-2 gap-3" : ""}>
@@ -370,10 +363,10 @@ export function LimitDialog({ part, onClose, onSaved }: { part: Part; onClose: (
             </p>
           </div>
         )}
-        {part.tracking === "weekends" && (
+        {counted && (
           <label className="mt-4 flex items-center gap-2.5 text-sm text-zinc-300">
-            <input type="checkbox" checked={countTestDays} onChange={(e) => setCountTestDays(e.target.checked)} className="h-4 w-4 accent-orange" />
-            Test days count as a weekend too
+            <input type="checkbox" checked={dueAfterRace} onChange={(e) => setDueAfterRace(e.target.checked)} className="h-4 w-4 accent-orange" />
+            Replaced every race weekend (turns red once one is logged)
           </label>
         )}
         <div className={condition ? "" : "mt-4"}>

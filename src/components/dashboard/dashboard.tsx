@@ -45,7 +45,7 @@ export function Dashboard({ initialState }: { initialState: TrackerState }) {
   const [dragging, setDragging] = useState(false);
   const splitRef = useRef<HTMLDivElement>(null);
   const splitValue = useRef(SPLIT_DEFAULT);
-  const [dialog, setDialog] = useState<null | "session" | "settings" | "checklist" | PartAction>(null);
+  const [dialog, setDialog] = useState<null | "race_weekend" | "test_day" | "settings" | "checklist" | PartAction>(null);
   const [adding, setAdding] = useState(false);
   const [placing, setPlacing] = useState(false);
   const [draft, setDraft] = useState<NewPart | null>(null);
@@ -174,6 +174,17 @@ export function Dashboard({ initialState }: { initialState: TrackerState }) {
     .map((p) => ({ position: p.marker!, color: p.color, active: p.id === selectedId }));
   if (draft?.marker) markers.push({ position: draft.marker, color: draft.color, active: true });
 
+  // Worst wear per car piece, for the gray / orange / red colors on the 3D car.
+  const wear = useMemo(() => {
+    const out: Record<string, "soon" | "due"> = {};
+    for (const p of parts) {
+      const s = partStatus(p);
+      if (s !== "soon" && s !== "due") continue;
+      for (const k of p.model) if (out[k] !== "due") out[k] = s;
+    }
+    return out;
+  }, [parts]);
+
   const describePiece = useCallback(
     (key: string): HoverLine[] =>
       parts.filter((p) => p.model.includes(key)).map((p) => ({ name: p.name, dot: STATUS_STYLES[partStatus(p)].dot })),
@@ -273,10 +284,17 @@ export function Dashboard({ initialState }: { initialState: TrackerState }) {
         <div className="ml-auto flex shrink-0 items-center gap-2 sm:gap-3">
           <button
             type="button"
-            onClick={() => setDialog("session")}
+            onClick={() => setDialog("race_weekend")}
             className="rounded-lg bg-linear-to-r from-orange to-maroon-bright px-3 py-2 text-xs font-bold uppercase tracking-[0.12em] text-white shadow-lg shadow-maroon/30 transition hover:brightness-110 sm:px-4"
           >
-            + Log session
+            + Race<span className="hidden sm:inline"> weekend</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setDialog("test_day")}
+            className="rounded-lg border border-orange/60 px-3 py-2 text-xs font-bold uppercase tracking-[0.12em] text-orange transition hover:bg-orange/10 sm:px-4"
+          >
+            + Test<span className="hidden sm:inline"> day</span>
           </button>
           <button
             type="button"
@@ -374,6 +392,7 @@ export function Dashboard({ initialState }: { initialState: TrackerState }) {
               <Car3D
                 highlight={highlight}
                 describe={describePiece}
+                wear={wear}
                 markers={markers}
                 onPickPart={pickFromCar}
                 placing={placing}
@@ -400,8 +419,17 @@ export function Dashboard({ initialState }: { initialState: TrackerState }) {
           }}
         />
       )}
-      {dialog === "session" && (
-        <LogSessionDialog onClose={() => setDialog(null)} onSaved={(s) => onSaved(s, "Session logged")} />
+      {(dialog === "race_weekend" || dialog === "test_day") && (
+        <LogSessionDialog
+          key={dialog}
+          type={dialog}
+          onClose={() => setDialog(null)}
+          onSaved={(s) => {
+            onSaved(s, dialog === "race_weekend" ? "Race weekend logged" : "Test day logged");
+            // Straight into the service checklist after a race weekend (skippable).
+            if (dialog === "race_weekend") setDialog("checklist");
+          }}
+        />
       )}
       {selected && (dialog === "checked" || dialog === "changed" || dialog === "issue") && (
         <EntryDialog

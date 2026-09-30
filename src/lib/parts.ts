@@ -29,6 +29,10 @@ export type Part = {
   lastEntry: string | null;
   /** Weekend-counted parts: test days count as a weekend too. */
   countTestDays: boolean;
+  /** Replaced every race weekend: turns red once a race weekend is logged. */
+  dueAfterRace: boolean;
+  /** Race weekends logged since the last change. */
+  racesSince: number;
   /** Inspect every N weekends (null = no scheduled inspection). */
   inspectEvery: number | null;
   /** Weekends run since the last check or change (only with inspectEvery). */
@@ -104,7 +108,32 @@ export const ACTION_LABELS: Record<HistoryEntry["action"], string> = {
 export type PartStatus = "unset" | "ok" | "soon" | "due";
 
 export const RESULT_LABELS: Record<CheckResult, string> = { good: "Good", watch: "Watch", replace: "Replace" };
-export const RESULT_TEXT: Record<CheckResult, string> = { good: "text-emerald-300", watch: "text-amber-300", replace: "text-red-300" };
+export const RESULT_TEXT: Record<CheckResult, string> = { good: "text-emerald-300", watch: "text-orange-300", replace: "text-red-300" };
+
+// Wear colors used on the part images and the 3D car: gray good, orange watch, red replace.
+export const WEAR_COLORS: Record<PartStatus, string> = { unset: "#52525b", ok: "#d4d4d8", soon: "#fb923c", due: "#ef4444" };
+
+// Overview picture for each standard part (files in /public/parts). Fluids reuse the
+// part they live in and get an oil-drop badge.
+export const PART_IMAGES: Record<string, { img: string; fluid?: true }> = {
+  "engine-oil": { img: "engine", fluid: true },
+  "trans-oil": { img: "transmission", fluid: true },
+  "diff-oil": { img: "differential", fluid: true },
+  "air-filter": { img: "air-filter" },
+  "pads-front": { img: "pads" },
+  "pads-rear": { img: "pads" },
+  tires: { img: "tires" },
+  rotors: { img: "rotor" },
+  clutch: { img: "clutch" },
+  engine: { img: "engine" },
+  transmission: { img: "transmission" },
+  differential: { img: "differential" },
+  dampers: { img: "damper" },
+  bearings: { img: "bearing" },
+  "control-arms": { img: "control-arm" },
+  ppf: { img: "ppf" },
+  axles: { img: "axle" },
+};
 
 // How much of the part's life is used, 0..1+ (null if it can't be worked out yet).
 export function lifeUsed(part: Part): number | null {
@@ -134,7 +163,7 @@ function lifeStatus(part: Part): PartStatus {
   }
   const used = lifeUsed(part);
   if (used == null) return "unset";
-  if (used >= 1) return "due";
+  if (used >= 1 || (part.dueAfterRace && part.racesSince > 0)) return "due";
   if (used >= 0.8) return "soon";
   return "ok";
 }
@@ -154,7 +183,7 @@ export function partStatus(part: Part): PartStatus {
 export const STATUS_STYLES: Record<PartStatus, { dot: string; label: string }> = {
   unset: { dot: "bg-zinc-600", label: "Not set up" },
   ok: { dot: "bg-emerald-400", label: "Good" },
-  soon: { dot: "bg-amber-400", label: "Due soon" },
+  soon: { dot: "bg-orange-400", label: "Due soon" },
   due: { dot: "bg-red-500", label: "Change now" },
 };
 

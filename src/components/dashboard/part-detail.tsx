@@ -27,7 +27,7 @@ const ACTION_TONES: Record<HistoryEntry["action"], string> = {
   checked: "border-sky-400/40 text-sky-300",
   changed: "border-emerald-400/40 text-emerald-300",
   issue: "border-red-400/40 text-red-300",
-  topped_off: "border-amber-400/40 text-amber-300",
+  topped_off: "border-orange-400/40 text-orange-300",
 };
 
 export function PartDetail({
@@ -123,13 +123,13 @@ export function PartDetail({
           </div>
         )}
         <p className="mt-3 text-sm text-zinc-500">{lifeHint}</p>
-        {inspectText && <p className={`mt-1 text-sm ${inspectionDue(part) ? "text-amber-300" : "text-zinc-500"}`}>{inspectText}</p>}
+        {inspectText && <p className={`mt-1 text-sm ${inspectionDue(part) ? "text-orange-300" : "text-zinc-500"}`}>{inspectText}</p>}
         {part.checkResult && part.checkResult !== "good" && (
           <p className={`mt-1 text-sm ${RESULT_TEXT[part.checkResult]}`}>
             Last check: {RESULT_LABELS[part.checkResult]}. Stays flagged until the part is changed or a later check says Good.
           </p>
         )}
-        {part.countTestDays && <p className="mt-1 text-sm text-zinc-500">Test days count as a weekend.</p>}
+        {part.dueAfterRace && <p className="mt-1 text-sm text-zinc-500">Replaced every race weekend: turns red once one is logged.</p>}
       </section>
 
       <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">

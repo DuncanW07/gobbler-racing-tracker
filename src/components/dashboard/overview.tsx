@@ -1,10 +1,8 @@
 "use client";
 
 import {
-  STATUS_STYLES,
-  statusLabel,
-  TRACKING_LABELS,
-  UNITS,
+  PART_IMAGES,
+  WEAR_COLORS,
   formatDate,
   formatNumber,
   lifeUsed,
@@ -15,15 +13,19 @@ import {
 } from "@/lib/parts";
 import { ConfirmButton } from "./confirm-button";
 
+const ORDER: PartStatus[] = ["due", "soon", "ok", "unset"];
+
 function valueText(p: Part): string {
-  const unit = UNITS[p.tracking];
   if (p.tracking === "hours" || p.tracking === "weekends") {
+    const unit = p.tracking === "hours" ? "hrs" : "wknds";
     return p.limit != null ? `${formatNumber(p.used)} / ${formatNumber(p.limit)} ${unit}` : `${formatNumber(p.used)} ${unit}`;
   }
-  if (p.tracking === "measured") return p.current != null ? `${formatNumber(p.current)} ${unit}` : "No measurement";
+  if (p.tracking === "measured") return p.current != null ? `${formatNumber(p.current)} mm` : "—";
   return p.lastEntry ? `Checked ${formatDate(p.lastEntry)}` : "Not checked";
 }
 
+// One tile per part: its picture tinted by status (gray good, orange watch, red
+// replace), its name, and its life bar. Flagged parts come first.
 export function Overview({
   parts,
   sessions,
@@ -39,26 +41,15 @@ export function Overview({
   deletingId: string | null;
   onChecklist: () => void;
 }) {
-  const counts: Record<PartStatus, number> = { due: 0, soon: 0, ok: 0, unset: 0 };
-  parts.forEach((p) => counts[partStatus(p)]++);
-  const flagged = parts
-    .filter((p) => ["due", "soon"].includes(partStatus(p)))
-    .sort((a, b) => (partStatus(a) === "due" ? -1 : 0) - (partStatus(b) === "due" ? -1 : 0));
-
-  const tiles: { status: PartStatus; tone: string }[] = [
-    { status: "due", tone: "text-red-400" },
-    { status: "soon", tone: "text-amber-300" },
-    { status: "ok", tone: "text-emerald-300" },
-    { status: "unset", tone: "text-zinc-400" },
-  ];
+  const sorted = parts
+    .map((p, i) => ({ p, s: partStatus(p), i }))
+    .sort((a, b) => ORDER.indexOf(a.s) - ORDER.indexOf(b.s) || a.i - b.i);
+  const last = sessions[0];
 
   return (
     <div className="p-4 sm:p-8">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <p className="font-mono text-[11px] uppercase tracking-[0.25em] text-orange">Overview</p>
-          <h1 className="mt-1 text-3xl font-black tracking-tight">Car status</h1>
-        </div>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h1 className="text-2xl font-black tracking-tight">Car status</h1>
         <button
           type="button"
           onClick={onChecklist}
@@ -68,100 +59,65 @@ export function Overview({
         </button>
       </div>
 
-      <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
-        {tiles.map(({ status, tone }) => (
-          <div key={status} className="rounded-xl border border-white/10 bg-white/[0.03] p-4">
-            <div className="flex items-center gap-2">
-              <span className={`h-2 w-2 rounded-full ${STATUS_STYLES[status].dot}`} />
-              <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-zinc-500">{STATUS_STYLES[status].label}</span>
-            </div>
-            <p className={`mt-2 text-3xl font-black ${tone}`}>{counts[status]}</p>
-          </div>
-        ))}
+      <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-[repeat(auto-fill,minmax(160px,1fr))]">
+        {sorted.map(({ p, s }) => {
+          const color = WEAR_COLORS[s];
+          const pic = p.slug ? PART_IMAGES[p.slug] : undefined;
+          const used = lifeUsed(p);
+          return (
+            <button
+              key={p.id}
+              type="button"
+              onClick={() => onSelect(p.id)}
+              title={p.name}
+              className={`group relative rounded-xl border bg-white/[0.02] p-3 text-left transition hover:bg-white/[0.05] ${
+                s === "due" ? "border-red-500/40" : s === "soon" ? "border-orange-400/30" : "border-white/10 hover:border-white/25"
+              }`}
+            >
+              {pic ? (
+                <div
+                  aria-hidden
+                  className="part-img aspect-square w-full transition group-hover:scale-[1.04]"
+                  style={{ backgroundColor: color, maskImage: `url(/parts/${pic.img}.webp)`, WebkitMaskImage: `url(/parts/${pic.img}.webp)` }}
+                />
+              ) : (
+                <div aria-hidden className="flex aspect-square w-full items-center justify-center">
+                  <span className="h-1/3 w-1/3 rounded-full border-2" style={{ borderColor: color }} />
+                </div>
+              )}
+              {pic?.fluid && (
+                <svg aria-label="Fluid" viewBox="0 0 24 24" className="absolute right-3 top-3 h-5 w-5" style={{ color }}>
+                  <path fill="currentColor" d="M12 2.5c-.3 0-.6.2-.8.5C9.4 5.8 6 10.6 6 14a6 6 0 0 0 12 0c0-3.4-3.4-8.2-5.2-11-.2-.3-.5-.5-.8-.5z" />
+                </svg>
+              )}
+              <p className="mt-1 truncate text-sm font-semibold text-zinc-100">{p.name}</p>
+              {used != null && (
+                <div className="mt-1.5 h-1 overflow-hidden rounded-full bg-white/5">
+                  <div className="h-full rounded-full" style={{ width: `${Math.min(Math.max(used, 0), 1) * 100}%`, background: color }} />
+                </div>
+              )}
+              <p className="mt-1 font-mono text-[10px] text-zinc-500">{valueText(p)}</p>
+            </button>
+          );
+        })}
       </div>
 
-      <section className="mt-8">
-        <h2 className="text-sm font-bold uppercase tracking-[0.15em] text-zinc-300">Needs attention</h2>
-        {flagged.length === 0 ? (
-          <p className="mt-3 rounded-xl border border-dashed border-white/10 px-5 py-6 text-sm text-zinc-500">
-            Nothing flagged. Parts show up here when they&apos;re close to or past their limit.
-          </p>
-        ) : (
-          <ul className="mt-3 space-y-2">
-            {flagged.map((p) => {
-              const s = partStatus(p);
-              return (
-                <li key={p.id}>
-                  <button
-                    type="button"
-                    onClick={() => onSelect(p.id)}
-                    className={`flex w-full items-center gap-3 rounded-xl border px-4 py-3 text-left transition hover:bg-white/[0.04] ${s === "due" ? "border-red-500/40 bg-red-500/[0.06]" : "border-amber-400/30 bg-amber-400/[0.04]"}`}
-                  >
-                    <span className={`h-2.5 w-2.5 rounded-full ${STATUS_STYLES[s].dot}`} />
-                    <span className="font-semibold text-zinc-100">{p.name}</span>
-                    <span className="ml-auto font-mono text-xs text-zinc-400">{valueText(p)}</span>
-                    <span className={`font-mono text-[10px] uppercase tracking-[0.2em] ${s === "due" ? "text-red-300" : "text-amber-300"}`}>
-                      {STATUS_STYLES[s].label}
-                    </span>
-                  </button>
-                </li>
-              );
-            })}
-          </ul>
-        )}
-      </section>
-
-      <section className="mt-8">
-        <h2 className="text-sm font-bold uppercase tracking-[0.15em] text-zinc-300">All parts</h2>
-        <div className="mt-3 grid grid-cols-[repeat(auto-fill,minmax(200px,1fr))] gap-3">
-          {parts.map((p) => {
-            const s = partStatus(p);
-            const used = lifeUsed(p);
-            return (
-              <button
-                key={p.id}
-                type="button"
-                onClick={() => onSelect(p.id)}
-                className="rounded-xl border border-white/10 bg-white/[0.03] p-4 text-left transition hover:border-orange/50 hover:bg-white/[0.05]"
-              >
-                <div className="flex items-center justify-between gap-2">
-                  <span className="truncate font-semibold text-zinc-100">{p.name}</span>
-                  <span className={`h-2 w-2 shrink-0 rounded-full ${STATUS_STYLES[s].dot}`} />
-                </div>
-                <p className="mt-1 text-xs text-zinc-500">{TRACKING_LABELS[p.tracking]}</p>
-                <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-white/5">
-                  <div
-                    className="h-full rounded-full"
-                    style={{
-                      width: `${Math.min(Math.max(used ?? 0, 0), 1) * 100}%`,
-                      background: s === "due" ? "#ef4444" : s === "soon" ? "#fbbf24" : p.color,
-                    }}
-                  />
-                </div>
-                <p className="mt-2 font-mono text-[10px] uppercase tracking-[0.15em] text-zinc-500">
-                  {valueText(p)}
-                  {s === "unset" && p.tracking !== "condition" && <span className="text-zinc-400"> · {statusLabel(p)}</span>}
-                </p>
-              </button>
-            );
-          })}
-        </div>
-      </section>
-
-      <section className="mt-8">
-        <h2 className="text-sm font-bold uppercase tracking-[0.15em] text-zinc-300">Recent sessions</h2>
-        {sessions.length === 0 ? (
-          <p className="mt-3 rounded-xl border border-dashed border-white/10 px-5 py-6 text-sm text-zinc-500">
-            No sessions logged yet. Use Log session at the top after running the car.
-          </p>
-        ) : (
-          <ul className="mt-3 divide-y divide-white/5 rounded-xl border border-white/10 bg-white/[0.02]">
+      <details className="mt-6 rounded-xl border border-white/10 bg-white/[0.02] text-sm">
+        <summary className="cursor-pointer px-4 py-3 text-zinc-400">
+          {last ? (
+            <>Last session: <span className="text-zinc-200">{last.name}</span> · {formatNumber(last.hours)} hrs · {formatDate(last.date)}</>
+          ) : (
+            "No sessions logged yet"
+          )}
+        </summary>
+        {sessions.length > 0 && (
+          <ul className="divide-y divide-white/5 border-t border-white/5">
             {sessions.slice(0, 8).map((s) => (
-              <li key={s.id} className="flex flex-wrap items-center gap-x-4 gap-y-2 px-5 py-3 text-sm">
-                <span className="w-24 shrink-0 text-zinc-400 sm:w-28">{formatDate(s.date)}</span>
+              <li key={s.id} className="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-2.5">
+                <span className="w-24 shrink-0 text-zinc-400">{formatDate(s.date)}</span>
                 <span className="font-semibold text-zinc-100">{s.name}</span>
                 <span className="font-mono text-[10px] uppercase tracking-[0.15em] text-zinc-500">
-                  {s.type === "race_weekend" ? "Race weekend" : "Test day"}
+                  {s.type === "race_weekend" ? "Race" : "Test"}
                 </span>
                 <span className="ml-auto flex max-w-full flex-wrap items-center justify-end gap-3">
                   <span className="whitespace-nowrap font-mono text-zinc-300">{formatNumber(s.hours)} hrs</span>
@@ -176,7 +132,7 @@ export function Overview({
             ))}
           </ul>
         )}
-      </section>
+      </details>
     </div>
   );
 }

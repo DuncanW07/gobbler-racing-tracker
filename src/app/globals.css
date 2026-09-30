@@ -183,3 +183,13 @@ body {
     animation: none !important;
   }
 }
+
+/* Overview part pictures: a white render used as a mask, tinted by status color. */
+.part-img {
+  mask-size: contain;
+  mask-repeat: no-repeat;
+  mask-position: center;
+  -webkit-mask-size: contain;
+  -webkit-mask-repeat: no-repeat;
+  -webkit-mask-position: center;
+}
