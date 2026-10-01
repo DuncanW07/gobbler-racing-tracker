@@ -12,8 +12,8 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
-    // Runs inside Google Apps Script / a local render page, not in the app.
-    "tools/backup/**",
+    // Runs on Supabase (Deno) / a local render page, not in the app.
+    "supabase/functions/**",
     "tools/part-images/render.html",
   ]),
 ]);

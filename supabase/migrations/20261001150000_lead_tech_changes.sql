@@ -135,15 +135,16 @@ begin
     reviewed_by = excluded.reviewed_by, reviewed_at = excluded.reviewed_at;
 end; $$;
 
--- 5) Live backup: after every change the database itself sends a full snapshot to
---    the team's backup spreadsheet (independent of the website being up).
+-- 5) Live Excel backup: after every change the database pings the backup-xlsx
+--    edge function, which reads the committed data and saves a fresh .xlsx in
+--    Storage (independent of the website being up).
 create extension if not exists pg_net;
 
 create table private.backup_config (
   id smallint primary key default 1 check (id = 1),
-  url text,        -- where snapshots are sent (the spreadsheet's receiver)
-  secret text,     -- shared secret the receiver checks
-  sheet_url text   -- link shown on the site
+  url text,        -- the backup-xlsx function
+  ping_key text,   -- shared key the function checks before rebuilding
+  link text        -- download link shown on the site
 );
 insert into private.backup_config (id) values (1);
 revoke all on private.backup_config from public, anon, authenticated;
@@ -236,7 +237,7 @@ begin
     'notes', (select coalesce(jsonb_agg(jsonb_build_object('id', n.id, 'body', n.body, 'loggedBy', n.logged_by, 'at', n.created_at)
                 order by n.created_at desc), '[]'::jsonb)
               from (select * from public.car_notes order by created_at desc limit 30) n),
-    'backupUrl', (select sheet_url from private.backup_config where id = 1));
+    'backupUrl', (select link from private.backup_config where id = 1));
 end;
 $$;
 
@@ -270,21 +271,34 @@ returns jsonb language sql security definer set search_path = '' stable as $$
   );
 $$;
 
+-- Read by the backup function only (service role), never by the site.
+create function public.backup_snapshot_service()
+returns jsonb language sql security definer set search_path = '' stable as $$
+  select private.backup_snapshot();
+$$;
+
 create function private.push_backup()
 returns trigger language plpgsql security definer set search_path = '' as $$
-declare v_url text; v_secret text;
+declare v_url text; v_key text;
 begin
-  select url, secret into v_url, v_secret from private.backup_config where id = 1;
+  -- one ping per transaction: pg_net sends it after commit, so the function
+  -- always reads the finished save (a checklist save is many statements)
+  if current_setting('gr.backup_pinged', true) = 'yes' then return null; end if;
+  perform set_config('gr.backup_pinged', 'yes', true);
+  select url, ping_key into v_url, v_key from private.backup_config where id = 1;
   if v_url is not null then
     -- async: never slows down or blocks the save itself
     perform net.http_post(
       url := v_url,
-      body := jsonb_build_object('secret', v_secret, 'data', private.backup_snapshot()),
+      body := jsonb_build_object('ping', v_key),
       headers := '{"Content-Type": "application/json"}'::jsonb,
-      timeout_milliseconds := 20000);
+      timeout_milliseconds := 30000);
   end if;
   return null;
 end; $$;
+
+-- Private bucket for the workbooks (only the service role reads or writes it).
+insert into storage.buckets (id, name, public) values ('backups', 'backups', false) on conflict (id) do nothing;
 
 create trigger backup_events after insert or update or delete on public.events for each statement execute function private.push_backup();
 create trigger backup_usage after insert or update or delete on public.usage_log for each statement execute function private.push_backup();
@@ -295,6 +309,8 @@ create trigger backup_guides after insert or update or delete on public.part_gui
 revoke all on function private.state_json() from public, anon, authenticated;
 revoke all on function private.backup_snapshot() from public, anon, authenticated;
 revoke all on function private.push_backup() from public, anon, authenticated;
+revoke all on function public.backup_snapshot_service() from public, anon, authenticated;
+grant execute on function public.backup_snapshot_service() to service_role;
 revoke all on function public.tracker_add_note(text, text, text) from public;
 revoke all on function public.tracker_delete_note(text, uuid) from public;
 revoke all on function public.tracker_guide(text, uuid) from public;

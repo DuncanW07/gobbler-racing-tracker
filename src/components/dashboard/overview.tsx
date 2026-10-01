@@ -60,9 +60,15 @@ export function Overview({
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-2xl font-black tracking-tight">Car status</h1>
         {backupUrl && (
-          <a href={backupUrl} target="_blank" rel="noopener noreferrer" className="ml-auto text-xs text-zinc-500 underline-offset-4 hover:text-orange hover:underline">
-            Backup spreadsheet ↗
-          </a>
+          <span className="ml-auto text-xs text-zinc-500">
+            <a href={backupUrl} className="underline-offset-4 hover:text-orange hover:underline" title="Updated after every change. Bookmark this link: it works even if the site is down.">
+              Excel backup ↓
+            </a>
+            {" · "}
+            <a href={`${backupUrl}&list=1`} target="_blank" rel="noopener noreferrer" className="underline-offset-4 hover:text-orange hover:underline">
+              by day
+            </a>
+          </span>
         )}
         <button
           type="button"
