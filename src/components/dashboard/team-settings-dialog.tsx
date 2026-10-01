@@ -99,6 +99,10 @@ export function TeamSettingsDialog({ onClose, onDone }: { onClose: () => void; o
               placeholder="At least 10 characters"
               className={fieldClass}
             />
+            <p className="mt-1.5 text-xs text-zinc-500">
+              10 to 72 characters. Letters, numbers and symbols like ! are all fine.
+              {next && <span className={next.length < 10 ? " text-orange-300" : " text-emerald-300"}> {next.length} typed.</span>}
+            </p>
           </div>
           <div>
             <label htmlFor="ts-confirm" className={labelClass}>New {noun} again</label>

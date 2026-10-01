@@ -10,7 +10,9 @@ export const labelClass = "mb-1.5 block font-mono text-[10px] uppercase tracking
 
 const NAME_KEY = "gr-logged-by";
 
-// Who's logging: remembered per device since everyone shares one login.
+// Who's logging: remembered per device since everyone shares one login. Every
+// "Logged by" field on the page stays in sync.
+const NAME_EVENT = "gr-logged-by";
 export function useLoggedBy(): [string, (v: string) => void] {
   const [name, setName] = useState("");
   useEffect(() => {
@@ -20,14 +22,17 @@ export function useLoggedBy(): [string, (v: string) => void] {
     } catch {
       // storage unavailable: just start blank
     }
+    const sync = (e: Event) => setName((e as CustomEvent<string>).detail);
+    window.addEventListener(NAME_EVENT, sync);
+    return () => window.removeEventListener(NAME_EVENT, sync);
   }, []);
   const update = (v: string) => {
-    setName(v);
     try {
       localStorage.setItem(NAME_KEY, v);
     } catch {
       // ignore
     }
+    window.dispatchEvent(new CustomEvent(NAME_EVENT, { detail: v }));
   };
   return [name, update];
 }

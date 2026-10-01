@@ -354,6 +354,12 @@ export function Dashboard({ initialState }: { initialState: TrackerState }) {
                 onDeleteSession={onDeleteSession}
                 deletingId={deletingId}
                 onChecklist={() => setDialog("checklist")}
+                notes={state.notes}
+                backupUrl={state.backupUrl}
+                onSaved={(s, msg) => {
+                  setState(s);
+                  flash(msg);
+                }}
               />
             )}
           </main>

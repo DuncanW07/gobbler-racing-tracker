@@ -54,7 +54,21 @@ export type Session = {
   notes: string | null;
 };
 
-export type TrackerState = { parts: Part[]; sessions: Session[] };
+export type CarNote = { id: string; body: string; loggedBy: string; at: string };
+
+export type TrackerState = { parts: Part[]; sessions: Session[]; notes: CarNote[]; backupUrl: string | null };
+
+// What to look at when inspecting each part (shown in the checklist).
+export const INSPECT_HINTS: Record<string, string> = {
+  rotors: "Lip on the edge, cracks, heat spots",
+  dampers: "Leaks, damage; retorque mounts",
+  "control-arms": "Bushings, ball joints; retorque",
+  bearings: "Play or noise when rocking the wheel",
+  axles: "Torn boots, play in the joints",
+  ppf: "Cracks, especially near the mounts",
+  transmission: "Play at the output flange",
+  differential: "Play at the input and output flanges",
+};
 
 export type EntryAction = "checked" | "changed" | "issue";
 

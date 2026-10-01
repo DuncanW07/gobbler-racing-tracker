@@ -20,6 +20,7 @@ import {
   type Part,
 } from "@/lib/parts";
 import { ConfirmButton } from "./confirm-button";
+import { GuideSection } from "./guide";
 
 export type PartAction = EntryAction | "limit";
 
@@ -164,6 +165,8 @@ export function PartDetail({
           </button>
         ))}
       </div>
+
+      <GuideSection key={part.id} part={part} />
 
       {/* History */}
       <section className="mt-8">

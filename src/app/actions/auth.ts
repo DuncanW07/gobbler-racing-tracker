@@ -107,7 +107,7 @@ export async function createTeamAccount(
 export type SettingsResult = { ok: true } | { ok: false; error: string };
 
 const SETTINGS_ERRORS: Record<string, string> = {
-  bad_admin_code: "Incorrect admin code.",
+  bad_admin_code: "Wrong admin code. (This is the admin code, not the team passcode.)",
   no_admin_code: "No admin code has been set up yet.",
   weak_passcode: "New passcode must be 10 to 72 characters.",
   weak_admin_code: "New admin code must be 10 to 72 characters.",
@@ -118,14 +118,17 @@ const SETTINGS_ERRORS: Record<string, string> = {
 
 function settingsError(message: string | undefined): string {
   if (message?.includes("not_authenticated")) return "Your login expired. Refresh the page and log in again.";
-  return SETTINGS_ERRORS[message ?? ""] ?? "Couldn't save. Try again.";
+  if (message && SETTINGS_ERRORS[message]) return SETTINGS_ERRORS[message];
+  // Anything else is a server problem, not something you typed: say so, and what it was.
+  return `Server error, nothing was changed. Try again; if it keeps failing, send this to Duncan: ${(message ?? "unknown").slice(0, 120)}`;
 }
 
 function checkNew(value: unknown, confirm: unknown, label: string): string | null {
-  if (typeof value !== "string" || value.length < 10 || value.length > 72) {
-    return `New ${label} must be 10 to 72 characters.`;
-  }
-  if (value !== confirm) return `The new ${label}s don't match.`;
+  if (typeof value !== "string" || !value) return `Enter the new ${label}.`;
+  if (value.length < 10) return `Too short: ${value.length} characters. The ${label} needs at least 10.`;
+  if (value.length > 72) return `Too long: ${value.length} characters. The ${label} can be at most 72.`;
+  if (value.trim() !== value) return `The ${label} can't start or end with a space.`;
+  if (value !== confirm) return `The two new ${label}s don't match. Retype the second one.`;
   return null;
 }
 

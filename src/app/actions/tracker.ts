@@ -65,6 +65,7 @@ function friendly(message: string): string {
   if (message.includes("name_required")) return "Add your name in Logged by.";
   if (message.includes("nothing_selected")) return "Tick at least one item.";
   if (message.includes("hours_required")) return "Enter the hours on track.";
+  if (message.includes("note_not_found")) return "Already deleted. Refresh the page.";
   if (message.includes("entry_not_found") || message.includes("session_not_found")) {
     return "Already deleted. Refresh the page.";
   }
@@ -267,4 +268,55 @@ export async function deleteSession(sessionId: string): Promise<TrackerResult> {
   return run(async (token) =>
     createServerClient().rpc("tracker_delete_session", { p_token: token, p_session: uuid(sessionId) }),
   );
+}
+
+// ---------------------------------------------------------------- whole-car notes
+
+export async function addNote(input: { body: string; loggedBy: string }): Promise<TrackerResult> {
+  return run(async (token) => {
+    const loggedBy = text(input.loggedBy, 60);
+    if (!loggedBy) throw new InputError("Add your name in Logged by.");
+    return createServerClient().rpc("tracker_add_note", { p_token: token, p_body: text(input.body, 2000, true), p_logged_by: loggedBy });
+  });
+}
+
+export async function deleteNote(noteId: string): Promise<TrackerResult> {
+  return run(async (token) => createServerClient().rpc("tracker_delete_note", { p_token: token, p_note: uuid(noteId) }));
+}
+
+// ---------------------------------------------------------------- how-to guides
+
+export type Guide = {
+  body: string;
+  reviewed: boolean;
+  updatedBy: string | null;
+  updatedAt: string;
+  reviewedBy: string | null;
+  reviewedAt: string | null;
+};
+
+export async function getGuide(partId: string): Promise<{ ok: true; guide: Guide | null } | { ok: false; error: string }> {
+  try {
+    const token = await sessionToken();
+    if (!token) return { ok: false, error: friendly("not_authenticated") };
+    const { data, error } = await createServerClient().rpc("tracker_guide", { p_token: token, p_component: uuid(partId) });
+    if (error) return { ok: false, error: friendly(error.message) };
+    return { ok: true, guide: (data as Guide | null) ?? null };
+  } catch (e) {
+    return { ok: false, error: e instanceof InputError ? e.message : friendly("") };
+  }
+}
+
+export async function saveGuide(input: { partId: string; body: string; loggedBy: string; reviewed: boolean }): Promise<TrackerResult> {
+  return run(async (token) => {
+    const loggedBy = text(input.loggedBy, 60);
+    if (!loggedBy) throw new InputError("Add your name in Logged by.");
+    return createServerClient().rpc("tracker_save_guide", {
+      p_token: token,
+      p_component: uuid(input.partId),
+      p_body: text(input.body, 20000, true),
+      p_by: loggedBy,
+      p_reviewed: input.reviewed === true,
+    });
+  });
 }

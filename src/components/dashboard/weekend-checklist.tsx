@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { afterWeekend } from "@/app/actions/tracker";
-import type { CheckResult, Part, TrackerState } from "@/lib/parts";
+import { INSPECT_HINTS, type CheckResult, type Part, type TrackerState } from "@/lib/parts";
 import { Footer, Modal, ResultPicker, fieldClass, labelClass, useLoggedBy, useSave } from "./dialogs";
 
 type Check = { result: CheckResult | null; notes: string };
@@ -26,6 +26,10 @@ export function WeekendChecklist({ parts, onClose, onSaved }: { parts: Part[]; o
     });
   const setCheck = (id: string, patch: Partial<Check>) =>
     setChecks((c) => ({ ...c, [id]: { ...(c[id] ?? { result: null, notes: "" }), ...patch } }));
+  // Marks every inspection not yet rated as Good; anything already rated (or
+  // changed afterwards) keeps its own result. Clear one to leave it uninspected.
+  const allGood = () =>
+    setChecks((c) => Object.fromEntries(inspect.map((p) => [p.id, c[p.id]?.result ? c[p.id] : { result: "good" as const, notes: c[p.id]?.notes ?? "" }])));
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -59,14 +63,22 @@ export function WeekendChecklist({ parts, onClose, onSaved }: { parts: Part[]; o
 
         {inspect.length > 0 && (
           <section>
-            <p className={labelClass}>Inspected</p>
+            <div className="mb-2 flex items-center justify-between gap-3">
+              <p className={`${labelClass} mb-0`}>Inspected</p>
+              <button type="button" onClick={allGood} className="rounded-md border border-emerald-400/50 px-2.5 py-1 text-xs font-semibold text-emerald-300 transition hover:bg-emerald-400/10">
+                All good
+              </button>
+            </div>
             <ul className="space-y-3">
               {inspect.map((p) => {
                 const c = checks[p.id];
                 return (
                   <li key={p.id}>
                     <div className="flex flex-wrap items-center justify-between gap-2">
-                      <span className="text-sm text-zinc-200">{p.name}</span>
+                      <span className="text-sm text-zinc-200">
+                        {p.name}
+                        {p.slug && INSPECT_HINTS[p.slug] && <span className="block text-xs text-zinc-500">{INSPECT_HINTS[p.slug]}</span>}
+                      </span>
                       <ResultPicker value={c?.result ?? null} onChange={(result) => setCheck(p.id, { result })} label={p.name} />
                     </div>
                     {(c?.result === "watch" || c?.result === "replace") && (

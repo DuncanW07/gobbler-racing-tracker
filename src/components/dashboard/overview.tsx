@@ -7,10 +7,13 @@ import {
   formatNumber,
   lifeUsed,
   partStatus,
+  type CarNote,
   type Part,
   type PartStatus,
   type Session,
+  type TrackerState,
 } from "@/lib/parts";
+import { CarNotes } from "./car-notes";
 import { ConfirmButton } from "./confirm-button";
 
 const ORDER: PartStatus[] = ["due", "soon", "ok", "unset"];
@@ -33,9 +36,15 @@ export function Overview({
   onDeleteSession,
   deletingId,
   onChecklist,
+  notes,
+  backupUrl,
+  onSaved,
 }: {
   parts: Part[];
   sessions: Session[];
+  notes: CarNote[];
+  backupUrl: string | null;
+  onSaved: (s: TrackerState, msg: string) => void;
   onSelect: (id: string) => void;
   onDeleteSession: (id: string) => void;
   deletingId: string | null;
@@ -50,6 +59,11 @@ export function Overview({
     <div className="p-4 sm:p-8">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-2xl font-black tracking-tight">Car status</h1>
+        {backupUrl && (
+          <a href={backupUrl} target="_blank" rel="noopener noreferrer" className="ml-auto text-xs text-zinc-500 underline-offset-4 hover:text-orange hover:underline">
+            Backup spreadsheet ↗
+          </a>
+        )}
         <button
           type="button"
           onClick={onChecklist}
@@ -101,6 +115,8 @@ export function Overview({
           );
         })}
       </div>
+
+      <CarNotes notes={notes} onSaved={onSaved} />
 
       <details className="mt-6 rounded-xl border border-white/10 bg-white/[0.02] text-sm">
         <summary className="cursor-pointer px-4 py-3 text-zinc-400">

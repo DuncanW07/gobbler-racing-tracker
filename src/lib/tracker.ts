@@ -13,13 +13,20 @@ export async function sessionToken(): Promise<string | null> {
 
 type RawPart = Omit<Part, "marker"> & { marker: number[] | null };
 
-export function normalizeState(raw: { parts: RawPart[]; sessions: TrackerState["sessions"] }): TrackerState {
+export function normalizeState(raw: {
+  parts: RawPart[];
+  sessions: TrackerState["sessions"];
+  notes?: TrackerState["notes"];
+  backupUrl?: string | null;
+}): TrackerState {
   return {
     parts: raw.parts.map((p) => ({
       ...p,
       marker: p.marker && p.marker.length === 3 ? [p.marker[0], p.marker[1], p.marker[2]] : null,
     })),
     sessions: raw.sessions,
+    notes: raw.notes ?? [],
+    backupUrl: raw.backupUrl ?? null,
   };
 }
 
